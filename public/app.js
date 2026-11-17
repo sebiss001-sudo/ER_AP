@@ -1,18 +1,21 @@
+// Import the functions you need from the SDKs you need
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-// TODO: Remplacez par vos propres configurations Firebase issues de la console Firebase
+// Your web app's Firebase configuration
 const firebaseConfig = {
-    apiKey: "VOTRE_API_KEY",
-    authDomain: "VOTRE_AUTH_DOMAIN",
-    projectId: "VOTRE_PROJECT_ID",
-    storageBucket: "VOTRE_STORAGE_BUCKET",
-    messagingSenderId: "VOTRE_MESSAGING_SENDER_ID",
-    appId: "VOTRE_APP_ID"
+  apiKey: "AIzaSyD8b4Viivsau6HzgHDHenQGRgP2_bIV0qY",
+  authDomain: "erap-66a28.firebaseapp.com",
+  projectId: "erap-66a28",
+  storageBucket: "erap-66a28.firebasestorage.app",
+  messagingSenderId: "131124147434",
+  appId: "1:131124147434:web:c89bc9541ae0919cac1393",
+  measurementId: "G-6JCD1FPTX3"
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -39,7 +42,9 @@ onAuthStateChanged(auth, (user) => {
         document.getElementById("auth-section").classList.add("hidden");
         document.getElementById("app-section").classList.remove("hidden");
         loadExpenses();
-        document.getElementById("exp-date").valueAsDate = new Date();
+        if(document.getElementById("exp-date")) {
+            document.getElementById("exp-date").valueAsDate = new Date();
+        }
     } else {
         document.getElementById("auth-section").classList.remove("hidden");
         document.getElementById("app-section").classList.add("hidden");
@@ -55,9 +60,6 @@ window.calculateTaxes = function() {
         document.getElementById("exp-tps").value = "0.00";
         document.getElementById("exp-tvq").value = "0.00";
     } else {
-        // Au Québec, la TPS est 5% et la TVQ est 9.975% sur le montant avant taxes ou calcul inverse.
-        // Formule standard : Total = HT + TPS + TVQ. Si on entre le montant TTC :
-        // TPS = Total / 1.14975 * 0.05 ; TVQ = Total / 1.14975 * 0.09975
         const ht = amount / 1.14975;
         const tps = ht * 0.05;
         const tvq = ht * 0.09975;
@@ -104,6 +106,7 @@ window.addExpense = async function(event) {
 // Charger les dépenses
 async function loadExpenses() {
     const tbody = document.getElementById("expenses-table-body");
+    if (!tbody) return;
     tbody.innerHTML = "<tr><td colspan='7' class='p-4 text-center text-gray-500'>Chargement...</td></tr>";
     
     const q = query(collection(db, "expenses"), orderBy("date", "desc"));
@@ -145,7 +148,6 @@ window.exportToExcel = function() {
         return;
     }
 
-    // Transformation des données pour le fichier Excel
     const dataToExport = expensesCache.map(exp => ({
         "Date": exp.date,
         "Événement / Motif": exp.motif,
@@ -159,6 +161,5 @@ window.exportToExcel = function() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Dépenses Travail");
 
-    // Téléchargement du fichier .xlsx
     XLSX.writeFile(workbook, "Rapport_Depenses_Comptable.xlsx");
 }
