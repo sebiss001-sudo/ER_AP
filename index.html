@@ -65,17 +65,24 @@
         <input id="exp-event-new" placeholder="Nom du nouvel événement" class="inp hidden mt-2">
       </div>
       <div><label class="lbl">Type de dépense</label><select id="exp-type" class="inp"></select></div>
+      <div id="km-wrap" class="hidden"><label class="lbl">Distance parcourue (km)</label><input type="number" step="0.1" min="0" id="exp-km" placeholder="ex: 124" class="inp"></div>
       <div><label class="lbl">Description (facultatif)</label><input id="exp-desc" placeholder="ex: café" class="inp"></div>
+      <div id="currency-wrap"><label class="lbl">Devise du reçu</label><select id="exp-currency" class="inp"><option value="CAD">$ CA</option><option value="USD">$ US</option></select></div>
+      <div id="usd-wrap" class="hidden"><label class="lbl">Montant sur le reçu ($ US)</label><input type="number" step="0.01" min="0" id="exp-usd" class="inp"></div>
       <div><label class="lbl">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxe / hors QC</option></select></div>
-      <div><label class="lbl">Montant total payé ($)</label><input type="number" step="0.01" id="exp-amount" required class="inp"></div>
-      <div><label class="lbl">Pourboire ($, retiré avant le calcul des taxes)</label><input type="number" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
+      <div><label id="amount-label" class="lbl">Montant total payé ($)</label><input type="number" step="0.01" id="exp-amount" class="inp"></div>
+      <div id="tip-wrap"><label class="lbl">Pourboire ($, retiré avant le calcul des taxes)</label><input type="number" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
       <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp" readonly></div>
       <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp" readonly></div>
       <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp" readonly></div>
       <div class="md:col-span-3"><label class="lbl">Explication (facultatif)</label><textarea id="exp-note" rows="2" placeholder="ex: 80 % de la facture applicable, une nuit était à mes frais." class="inp"></textarea></div>
       <div class="md:col-span-3 space-y-2">
         <label class="lbl">Photo ou PDF du reçu (4 Mo max pour un PDF) <span id="photo-hint" class="font-normal text-slate-400"></span></label>
-        <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+          <button type="button" id="cam-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shrink-0"><i class="fa-solid fa-camera mr-2"></i>Prendre une photo</button>
+          <input type="file" id="exp-camera" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
+        </div>
         <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-40 rounded-xl border p-1 mt-2">
       </div>
       <div class="md:col-span-3 flex justify-end gap-2">
@@ -134,13 +141,15 @@ const AUTHORITY = "https://login.microsoftonline.com/consumers";
 
 const SCOPES = ["Files.ReadWrite.AppFolder"]; // accès limité au dossier de l'app dans OneDrive
 const G = "https://graph.microsoft.com/v1.0/me/drive";
-const TYPES = ["Restaurant", "Hôtel", "Stationnement", "Taxi", "Essence", "Location auto", "Autre"];
+const TYPES = ["Restaurant", "Hôtel", "Stationnement", "Taxi", "Essence", "Location auto", "Kilométrage", "Autre"];
+const KM = "Kilométrage", KM_RATE = 0.73; // taux de remboursement par km
 const TYPE_RENAMES = { Parking: "Stationnement", Carburant: "Essence", "Frais de carburant": "Essence", "Frais de représentation": "Autre" };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = v => parseFloat(v) || 0;
 const fmt = n => Number(n || 0).toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
+const fmtUsd = n => Number(n || 0).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $ US";
 const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const cleanName = n => n.replace(/[\\\/:*?"<>|#%~]/g, "-").replace(/\s+/g, " ").trim();
 const folderName = n => cleanName(n).replace(/[. ]+$/, "").slice(0, 80) || "Sans nom";
@@ -262,12 +271,37 @@ function calculateTaxes() {
 ["exp-amount", "exp-tip"].forEach(id => $(id).addEventListener("input", calculateTaxes));
 $("tax-mode").addEventListener("change", calculateTaxes);
 
+// ---------- Kilométrage et dépenses en $ US ----------
+let taxForced = false;
+function applyModes() {
+  const km = $("exp-type").value === KM;
+  if (km) $("exp-currency").value = "CAD";
+  const usd = $("exp-currency").value === "USD";
+  $("km-wrap").classList.toggle("hidden", !km);
+  $("currency-wrap").classList.toggle("hidden", km);
+  $("usd-wrap").classList.toggle("hidden", !usd);
+  $("tip-wrap").classList.toggle("hidden", km);
+  if (km || usd) { $("tax-mode").value = "excluded"; $("tax-mode").disabled = true; taxForced = true; }
+  else { $("tax-mode").disabled = false; if (taxForced) { $("tax-mode").value = "included"; taxForced = false; } }
+  $("exp-amount").readOnly = km;
+  if (km) { $("exp-tip").value = ""; $("exp-amount").value = $("exp-km").value ? r2(num($("exp-km").value) * KM_RATE).toFixed(2) : ""; }
+  $("amount-label").textContent = km ? "Montant (0,73 $/km)" : usd ? "Montant facturé sur la carte de crédit ($ CA)" : "Montant total payé ($)";
+  if (!editingId) $("photo-hint").textContent = km ? "(facultatif pour le kilométrage)" : "";
+  calculateTaxes();
+}
+$("exp-type").addEventListener("change", applyModes);
+$("exp-currency").addEventListener("change", applyModes);
+$("exp-km").addEventListener("input", applyModes);
+
 // ---------- Fichier du reçu ----------
-$("exp-photo").addEventListener("change", e => {
-  const f = e.target.files[0], p = $("receipt-preview");
+const getFile = () => $("exp-camera").files[0] || $("exp-photo").files[0];
+$("cam-btn").addEventListener("click", () => $("exp-camera").click());
+["exp-camera", "exp-photo"].forEach(id => $(id).addEventListener("change", e => {
+  if (e.target.files[0]) $(id === "exp-camera" ? "exp-photo" : "exp-camera").value = ""; // garde un seul fichier
+  const f = getFile(), p = $("receipt-preview");
   if (!f || !f.type.startsWith("image/")) { p.classList.add("hidden"); return; }
   p.src = URL.createObjectURL(f); p.classList.remove("hidden");
-});
+}));
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -287,18 +321,20 @@ function resetForm(keepEvent = "") {
   editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
   $("receipt-preview").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
   $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
-  calculateTaxes();
+  applyModes();
 }
 $("cancel-btn").addEventListener("click", () => resetForm());
 function startEdit(id) {
   const e = expenses.find(x => x.id === id); if (!e) return;
   editingId = id; buildEventSelect(e.event); buildTypeSelect(e.type);
   $("exp-date").value = e.date || ""; $("exp-desc").value = e.desc || "";
+  $("exp-currency").value = e.currency === "USD" ? "USD" : "CAD"; $("exp-usd").value = e.usd ? e.usd.toFixed(2) : ""; $("exp-km").value = e.km || "";
+  taxForced = false; $("tax-mode").disabled = false;
   $("tax-mode").value = (e.tps || e.tvq) ? "included" : "excluded"; $("exp-amount").value = e.total; $("exp-tip").value = e.tip ? e.tip.toFixed(2) : "";
-  $("exp-note").value = e.note || ""; $("exp-photo").value = ""; $("receipt-preview").classList.add("hidden");
-  $("photo-hint").textContent = "(laisser vide pour garder le reçu actuel)";
+  $("exp-note").value = e.note || ""; $("exp-photo").value = ""; $("exp-camera").value = ""; $("receipt-preview").classList.add("hidden");
+  $("photo-hint").textContent = e.photoId ? "(laisser vide pour garder le reçu actuel)" : "";
   $("form-title").textContent = "Modifier la dépense"; $("submit-btn").textContent = "Enregistrer les modifications"; $("cancel-btn").classList.remove("hidden");
-  calculateTaxes(); $("expense-form").scrollIntoView({ behavior: "smooth" });
+  applyModes(); $("expense-form").scrollIntoView({ behavior: "smooth" });
 }
 async function handleConflict(e) {
   if (e.status === 412) { alert("Les données ont été modifiées ailleurs. Elles sont rechargées : refais ta modification."); await refresh(); }
@@ -306,7 +342,7 @@ async function handleConflict(e) {
 }
 $("expense-form").addEventListener("submit", async ev => {
   ev.preventDefault();
-  const file = $("exp-photo").files[0], existing = editingId ? expenses.find(x => x.id === editingId) : null;
+  const file = getFile(), existing = editingId ? expenses.find(x => x.id === editingId) : null;
   let evName = $("exp-event").value;
   if (evName === "__new__") {
     const typed = $("exp-event-new").value.trim();
@@ -314,15 +350,26 @@ $("expense-form").addEventListener("submit", async ev => {
     evName = allEvents().find(n => n.toLowerCase() === typed.toLowerCase()) || typed; // évite les doublons de casse
   }
   if (!evName) return alert("Choisis un événement ou crée-en un nouveau.");
-  if (!file && !existing) return alert("Ajoute une photo ou un PDF du reçu.");
+  const isKm = $("exp-type").value === KM, isUsd = !isKm && $("exp-currency").value === "USD";
+  const total = num($("exp-amount").value), dateV = $("exp-date").value;
+  if (isKm && !(num($("exp-km").value) > 0)) return alert("Entre la distance parcourue en km.");
+  if (isUsd && !(num($("exp-usd").value) > 0)) return alert("Entre le montant en $ US inscrit sur le reçu.");
+  if (!(total > 0)) return alert(isUsd ? "Entre le montant facturé sur la carte de crédit en $ CA." : "Entre le montant de la dépense.");
+  if (!file && !existing && !isKm) return alert("Ajoute une photo ou un PDF du reçu.");
   if (num($("exp-tip").value) > num($("exp-amount").value)) return alert("Le pourboire ne peut pas dépasser le montant total.");
   if (file && file.type === "application/pdf" && file.size > 4 * 1024 * 1024) return alert("Ce PDF dépasse 4 Mo. Réduis-le ou prends-le en photo.");
+  // Détection de doublon : même date et même montant
+  const dups = expenses.filter(x => x.id !== editingId && x.date === dateV && Math.abs((x.total || 0) - total) < 0.005);
+  if (dups.length && !confirm("Attention, doublon possible. Cette dépense ressemble à :\n\n" +
+    dups.map(d => `• ${d.date} · ${d.type || ""}${d.desc ? " · " + d.desc : ""} · ${fmt(d.total)} (${d.event || "-"})`).join("\n") +
+    "\n\nEnregistrer quand même?")) return;
 
   const btn = $("submit-btn"); btn.disabled = true; btn.textContent = "Enregistrement en cours…";
   const rec = {
     id: existing?.id || crypto.randomUUID(), date: $("exp-date").value, event: evName, type: $("exp-type").value, desc: $("exp-desc").value.trim(),
     subtotal: num($("exp-subtotal").value), tps: num($("exp-tps").value), tvq: num($("exp-tvq").value), otherTax: 0,
-    tip: num($("exp-tip").value), total: num($("exp-amount").value), note: $("exp-note").value.trim(),
+    tip: isKm ? 0 : num($("exp-tip").value), total, note: $("exp-note").value.trim(),
+    currency: isUsd ? "USD" : "CAD", usd: isUsd ? num($("exp-usd").value) : 0, km: isKm ? num($("exp-km").value) : 0, kmRate: isKm ? KM_RATE : 0,
     photoId: existing?.photoId, photoUrl: existing?.photoUrl, photoName: existing?.photoName, isPdf: existing?.isPdf
   };
   const backup = expenses.slice(), backupEvents = events.slice(); let uploaded = null;
@@ -384,10 +431,10 @@ function render() {
   tb.innerHTML = data.length ? data.map(e => `<tr class="hover:bg-slate-50/80">
     <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
     <td class="p-3 font-medium text-slate-900">${esc(e.event || "-")}</td>
-    <td class="p-3 text-slate-700">${esc(e.desc || "")}${e.note ? `<div class="text-xs text-slate-400 mt-0.5">${esc(e.note)}</div>` : ""}</td><td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
+    <td class="p-3 text-slate-700">${esc(e.desc || "")}${e.km ? `<div class="text-xs text-slate-500 mt-0.5">${esc(String(e.km).replace(".", ","))} km × ${fmt(e.kmRate || KM_RATE)}</div>` : ""}${e.note ? `<div class="text-xs text-slate-400 mt-0.5">${esc(e.note)}</div>` : ""}</td><td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
     <td class="p-3 whitespace-nowrap text-slate-500">${e.tip ? fmt(e.tip) : ""}</td>
-    <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
-    <td class="p-3"><button data-view="${esc(e.id)}" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</button></td>
+    <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}${e.currency === "USD" ? `<div class="text-xs font-normal text-slate-400">${fmtUsd(e.usd)}</div>` : ""}</td><td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
+    <td class="p-3">${e.photoId ? `<button data-view="${esc(e.id)}" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</button>` : `<span class="text-slate-300">-</span>`}</td>
     <td class="p-3 whitespace-nowrap"><button data-edit="${esc(e.id)}" class="text-blue-500 hover:text-blue-700 mr-3" title="Modifier"><i class="fa-solid fa-pen"></i></button><button data-del="${esc(e.id)}" class="text-red-400 hover:text-red-600" title="Supprimer"><i class="fa-solid fa-trash"></i></button></td></tr>`).join("")
     : `<tr><td colspan="10" class="text-center p-8 text-slate-400">Aucune dépense pour cette sélection</td></tr>`;
   document.querySelectorAll("[data-sort]").forEach(th => th.querySelector(".ind").textContent = th.dataset.sort === sort.key ? (sort.dir > 0 ? " ▲" : " ▼") : "");
@@ -497,19 +544,21 @@ $("export-btn").addEventListener("click", async () => {
     ws.columns = [
       { header: "Date", key: "date", width: 12 }, { header: "Événement", key: "event", width: 26 }, { header: "Type de dépense", key: "type", width: 18 },
       { header: "Description", key: "desc", width: 24 }, { header: "Explication", key: "note", width: 36 },
+      { header: "Km", key: "km", width: 9 }, { header: "Montant US ($ US)", key: "usd", width: 16 },
       { header: "Sous-total ($)", key: "subtotal", width: 14 }, { header: "TPS ($)", key: "tps", width: 12 }, { header: "TVQ ($)", key: "tvq", width: 12 },
       { header: "Pourboire ($)", key: "tip", width: 13 }, { header: "Total ($)", key: "total", width: 14 },
       { header: "Reçu", key: "receipt", width: 28 }
     ];
     const head = ws.getRow(1); head.font = { bold: true }; head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
-    ws.views = [{ state: "frozen", ySplit: 1 }]; ws.autoFilter = "A1:K1";
+    ws.views = [{ state: "frozen", ySplit: 1 }]; ws.autoFilter = "A1:M1";
     const moneyKeys = ["subtotal", "tps", "tvq", "tip", "total"];
     let failed = 0;
     for (let i = 0; i < data.length; i++) {
       const e = data[i]; label.textContent = `Préparation… ${i + 1}/${data.length}`;
-      const row = ws.addRow({ date: e.date, event: e.event || "", type: e.type || "", desc: e.desc || "", note: e.note || "",
+      const row = ws.addRow({ date: e.date, event: e.event || "", type: e.type || "", desc: e.desc || "", note: e.note || "", km: e.km || null, usd: e.currency === "USD" ? e.usd : null,
         subtotal: e.subtotal || 0, tps: e.tps || 0, tvq: e.tvq || 0, tip: e.tip || 0, total: e.total || 0 });
       moneyKeys.forEach(k => row.getCell(k).numFmt = money);
+      row.getCell("km").numFmt = "0.0"; row.getCell("usd").numFmt = '#,##0.00 "$ US"';
       row.alignment = { vertical: "middle", wrapText: true };
       if (!e.photoId) continue;
       if (e.isPdf) { row.getCell("receipt").value = { text: "PDF (ouvrir)", hyperlink: e.photoUrl }; continue; }
@@ -518,12 +567,12 @@ $("export-btn").addEventListener("click", async () => {
         const bmp = await createImageBitmap(new Blob([buf])), s = Math.min(190 / bmp.width, 250 / bmp.height, 1);
         const w = bmp.width * s, h = bmp.height * s; bmp.close?.();
         const imgId = wb.addImage({ buffer: buf, extension: /png/.test(type) ? "png" : "jpeg" });
-        ws.addImage(imgId, { tl: { col: 10.05, row: row.number - 1 + 0.03 }, ext: { width: w, height: h } });
+        ws.addImage(imgId, { tl: { col: 12.05, row: row.number - 1 + 0.03 }, ext: { width: w, height: h } });
         row.height = h * 0.75 + 6;
       } catch (err) { failed++; row.getCell("receipt").value = "Reçu indisponible"; }
     }
     const n = data.length + 1, tot = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
-    const col = { subtotal: "F", tps: "G", tvq: "H", tip: "I", total: "J" };
+    const col = { subtotal: "H", tps: "I", tvq: "J", tip: "K", total: "L" };
     const totalRow = ws.addRow({ date: "TOTAL" }); totalRow.font = { bold: true };
     moneyKeys.forEach(k => { const c = totalRow.getCell(k); c.value = { formula: `SUM(${col[k]}2:${col[k]}${n})`, result: tot(k) }; c.numFmt = money; });
     const buf = await wb.xlsx.writeBuffer();
