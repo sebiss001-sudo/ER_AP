@@ -1,1 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestion des Dépenses - ER_AP</title>
+    <!-- Tailwind CSS pour un design propre et rapide -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS pour l'export Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
 
+    <!-- Écran de Connexion -->
+    <div id="auth-section" class="flex items-center justify-center min-h-screen">
+        <div class="bg-white p-8 rounded-xl shadow-md w-96 text-center">
+            <h1 class="text-2xl font-bold mb-6 text-blue-600">Connexion Requise</h1>
+            <p class="text-sm text-gray-500 mb-4">Accès sécurisé pour votre comptable</p>
+            <input type="email" id="email" placeholder="Courriel" value="sebastien.bissonnette,.vcat@gmail.com" class="w-full p-3 border rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="password" id="password" placeholder="Mot de passe" class="w-full p-3 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="login()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition">Se connecter</button>
+            <p id="auth-error" class="text-red-500 text-sm mt-3"></p>
+        </div>
+    </div>
+
+    <!-- Application principale (masquée par défaut) -->
+    <div id="app-section" class="hidden max-w-5xl mx-auto p-4 md:p-8">
+        <header class="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
+            <h1 class="text-xl font-bold text-gray-700">Gestion des Dépenses Professionnelles</h1>
+            <button onclick="logout()" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg font-medium hover:bg-red-100 transition">Déconnexion</button>
+        </header>
+
+        <!-- Formulaire de saisie -->
+        <div class="bg-white p-6 rounded-xl shadow-sm mb-8">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">Ajouter une dépense</h2>
+            <form id="expense-form" onsubmit="addExpense(event)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Date</label>
+                    <input type="date" id="exp-date" required class="w-full p-2.5 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Événement / Motif</label>
+                    <input type="text" id="exp-motif" placeholder="ex: Congrès Montréal 2026" required class="w-full p-2.5 border rounded-lg">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Montant Brut / Total ($)</label>
+                    <input type="number" step="0.01" id="exp-amount" placeholder="0.00" oninput="calculateTaxes()" required class="w-full p-2.5 border rounded-lg">
+                </div>
+                <div class="flex items-center pt-6">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="exp-other-province" onchange="calculateTaxes()" class="w-4 h-4 text-blue-600 rounded">
+                        <span class="ml-2 text-sm text-gray-600">Autre province / pays (Pas de TPS/TVQ auto)</span>
+                    </label>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">TPS (5%)</label>
+                    <input type="number" step="0.01" id="exp-tps" class="w-full p-2.5 border rounded-lg bg-gray-100" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">TVQ (9.975%)</label>
+                    <input type="number" step="0.01" id="exp-tvq" class="w-full p-2.5 border rounded-lg bg-gray-100" readonly>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Photo du reçu (Facture)</label>
+                    <input type="file" id="exp-photo" accept="image/*" capture="environment" required class="w-full p-2 border rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                </div>
+                <div class="md:col-span-2 flex justify-end">
+                    <button type="submit" class="bg-green-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-green-700 transition">Enregistrer la dépense</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Tableau et Export -->
+        <div class="bg-white p-6 rounded-xl shadow-sm">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-700">Liste des dépenses enregistrées</h2>
+                <button onclick="exportToExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-emerald-700 transition flex items-center gap-2">Exporter pour le comptable (.xlsx)</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600 text-sm">
+                            <th class="p-3">Date</th>
+                            <th class="p-3">Événement</th>
+                            <th class="p-3">Total ($)</th>
+                            <th class="p-3">TPS</th>
+                            <th class="p-3">TVQ</th>
+                            <th class="p-3">Reçu</th>
+                            <th class="p-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenses-table-body" class="text-sm divide-y">
+                        <!-- Les dépenses s'afficheront ici dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script principal Firebase et logique -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
