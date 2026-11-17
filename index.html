@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Application Web - ER_AP</title>
+    <title>Suivi des Dépenses Professionnelles - ER_AP</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- SheetJS pour l'export Excel -->
@@ -26,7 +26,7 @@
             </div>
             <h1 class="font-bold text-xl text-slate-900">Connexion Requise</h1>
             <p class="text-sm text-slate-500">Accès sécurisé pour la gestion de vos dépenses.</p>
-            <input type="email" id="login-email" placeholder="Courriel" value="s.bissonnette.vcat@gmail.com" class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="email" id="login-email" placeholder="Courriel" value="sebastien.bissonnette.vcat@gmail.com" class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
             <input type="password" id="login-password" placeholder="Mot de passe" class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
             <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition">Se connecter</button>
             <p id="auth-error" class="text-red-500 text-xs"></p>
@@ -34,37 +34,91 @@
     </div>
 
     <!-- Application Principale -->
-    <div id="app-content" class="hidden max-w-5xl mx-auto p-4 md:p-6 space-y-6">
+    <div id="app-content" class="hidden max-w-6xl mx-auto p-4 md:p-6 space-y-6">
         <header class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-            <h1 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Gestion des Dépenses</h1>
+            <h1 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des Dépenses Professionnelles</h1>
             <button onclick="handleLogout()" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button>
         </header>
+
+        <!-- Tableau de Bord / KPI Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-xs font-semibold text-slate-400 uppercase">Total Dépenses (Mois)</span>
+                <div id="kpi-total" class="text-xl font-extrabold text-slate-800 mt-1">0,00 $</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-xs font-semibold text-slate-400 uppercase">TPS Récupérable</span>
+                <div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-xs font-semibold text-slate-400 uppercase">TVQ Récupérable</span>
+                <div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div>
+            </div>
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+                <span class="text-xs font-semibold text-slate-400 uppercase">Nombre de Reçus</span>
+                <div id="kpi-count" class="text-xl font-extrabold text-slate-800 mt-1">0</div>
+            </div>
+        </div>
 
         <!-- Formulaire de Saisie -->
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
             <h2 class="font-bold text-slate-700 text-sm uppercase tracking-wider">Ajouter une dépense</h2>
-            <form id="expense-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                     <label class="block text-xs font-semibold text-slate-500 mb-1">Date</label>
                     <input type="date" id="exp-date" required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Événement</label>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Numéro de projet</label>
+                    <input type="text" id="exp-proj-num" placeholder="ex: 24056" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Nom du projet</label>
+                    <input type="text" id="exp-proj-name" placeholder="ex: CHUM" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Client</label>
+                    <input type="text" id="exp-client" placeholder="ex: Société Québécoise des Infrastructures" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Événement / Mandat</label>
                     <input type="text" id="exp-event" placeholder="ex: Congrès, Réunion client..." required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-500 mb-1">Type de facture</label>
-                    <input type="text" id="exp-type" placeholder="ex: Parking, Restaurant, Hôtel..." required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <select id="exp-type" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option>Restaurant</option>
+                        <option>Hôtel</option>
+                        <option>Parking</option>
+                        <option>Taxi</option>
+                        <option>Carburant</option>
+                        <option>Location auto</option>
+                        <option>Frais de représentation</option>
+                        <option>Autre</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Nom du fournisseur</label>
+                    <input type="text" id="exp-supplier" placeholder="ex: Hilton, Indigo..." required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Numéro de facture</label>
+                    <input type="text" id="exp-invoice" placeholder="ex: F-12345" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Mode de taxes</label>
+                    <select id="tax-mode" onchange="calculateTaxes()" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+                        <option value="included">Taxes incluses (QC)</option>
+                        <option value="excluded">Taxes exclues / Hors QC</option>
+                    </select>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-500 mb-1">Montant Total ($)</label>
                     <input type="number" step="0.01" id="exp-amount" placeholder="0.00" oninput="calculateTaxes()" required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
-                <div class="md:col-span-2 flex items-center pt-2">
-                    <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="exp-other-province" onchange="calculateTaxes()" class="w-4 h-4 text-blue-600 rounded">
-                        <span class="ml-2 text-xs font-medium text-slate-600">Autre province / pays (Pas de TPS/TVQ auto)</span>
-                    </label>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 mb-1">Sous-total (Hors taxes)</label>
+                    <input type="number" step="0.01" id="exp-subtotal" class="w-full p-2.5 border rounded-xl text-sm bg-slate-100" readonly>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-500 mb-1">TPS (5%)</label>
@@ -74,12 +128,19 @@
                     <label class="block text-xs font-semibold text-slate-500 mb-1">TVQ (9.975%)</label>
                     <input type="number" step="0.01" id="exp-tvq" class="w-full p-2.5 border rounded-xl text-sm bg-slate-100" readonly>
                 </div>
-                <div class="md:col-span-2">
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Photo du reçu</label>
-                    <input type="file" id="exp-photo" accept="image/*" capture="environment" required class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                <div class="flex items-center pt-6">
+                    <label class="flex items-center cursor-pointer">
+                        <input type="checkbox" id="exp-billable" checked class="w-4 h-4 text-blue-600 rounded">
+                        <span class="ml-2 text-xs font-medium text-slate-600">Facturable au client</span>
+                    </label>
                 </div>
-                <div class="md:col-span-2 flex justify-end">
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition">Enregistrer la dépense</button>
+                <div class="md:col-span-3 space-y-2">
+                    <label class="block text-xs font-semibold text-slate-500">Photo / Fichier du reçu</label>
+                    <input type="file" id="exp-photo" accept="image/*" capture="environment" required class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <img id="receipt-preview" class="hidden max-h-40 rounded-xl border p-1 shadow-sm mt-2">
+                </div>
+                <div class="md:col-span-3 flex justify-end">
+                    <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition">Enregistrer la dépense</button>
                 </div>
             </form>
         </div>
@@ -95,7 +156,8 @@
                     <thead>
                         <tr class="bg-slate-50 text-slate-500 text-xs">
                             <th class="p-3 rounded-l-xl">Date</th>
-                            <th class="p-3">Événement</th>
+                            <th class="p-3">Projet / Client</th>
+                            <th class="p-3">Fournisseur</th>
                             <th class="p-3">Type</th>
                             <th class="p-3">Total ($)</th>
                             <th class="p-3">TPS</th>
@@ -153,65 +215,142 @@
             auth.signOut();
         }
 
-        // Calcul automatique des taxes québécoises
-        function calculateTaxes() {
-            const amount = parseFloat(document.getElementById("exp-amount").value) || 0;
-            const isOther = document.getElementById("exp-other-province").checked;
-            if (isOther) {
-                document.getElementById("exp-tps").value = "0.00";
-                document.getElementById("exp-tvq").value = "0.00";
-            } else {
-                const ht = amount / 1.14975;
-                document.getElementById("exp-tps").value = (ht * 0.05).toFixed(2);
-                document.getElementById("exp-tvq").value = (ht * 0.09975).toFixed(2);
+        // Prévisualisation du reçu
+        document.getElementById("exp-photo").addEventListener("change", e => {
+            const file = e.target.files[0];
+            const preview = document.getElementById("receipt-preview");
+            if (!file) {
+                preview.classList.add("hidden");
+                return;
             }
+            preview.src = URL.createObjectURL(file);
+            preview.classList.remove("hidden");
+        });
+
+        // Compression automatique de l'image (max 1500px, qualité 0.75)
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const canvas = document.createElement("canvas");
+                const img = new Image();
+                img.onload = () => {
+                    const MAX = 1500;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > MAX) {
+                        height *= MAX / width;
+                        width = MAX;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext("2d");
+                    ctx.drawImage(img, 0, 0, width, height);
+                    canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.75);
+                };
+                img.src = URL.createObjectURL(file);
+            });
         }
 
-        // Soumission du formulaire (Enregistrement Firestore + Storage)
+        // Calcul dynamique des taxes et sous-total
+        function calculateTaxes() {
+            const amount = parseFloat(document.getElementById("exp-amount").value) || 0;
+            const mode = document.getElementById("tax-mode").value;
+            let subtotal = 0, tps = 0, tvq = 0;
+
+            if (mode === "included") {
+                subtotal = amount / 1.14975;
+                tps = subtotal * 0.05;
+                tvq = subtotal * 0.09975;
+            } else {
+                subtotal = amount;
+                tps = 0;
+                tvq = 0;
+            }
+
+            document.getElementById("exp-subtotal").value = subtotal.toFixed(2);
+            document.getElementById("exp-tps").value = tps.toFixed(2);
+            document.getElementById("exp-tvq").value = tvq.toFixed(2);
+        }
+
+        // Soumission sécurisée avec protection anti-double-clic
         document.getElementById("expense-form").addEventListener("submit", async function(e) {
             e.preventDefault();
+            const btn = document.getElementById("submit-btn");
+            btn.disabled = true;
+            btn.innerText = "Enregistrement en cours...";
+
             const date = document.getElementById("exp-date").value;
+            const projectNumber = document.getElementById("exp-proj-num").value;
+            const projectName = document.getElementById("exp-proj-name").value;
+            const clientName = document.getElementById("exp-client").value;
             const eventName = document.getElementById("exp-event").value;
             const expenseType = document.getElementById("exp-type").value;
+            const supplier = document.getElementById("exp-supplier").value;
+            const invoiceNumber = document.getElementById("exp-invoice").value;
             const total = parseFloat(document.getElementById("exp-amount").value);
+            const subtotal = parseFloat(document.getElementById("exp-subtotal").value);
             const tps = parseFloat(document.getElementById("exp-tps").value);
             const tvq = parseFloat(document.getElementById("exp-tvq").value);
+            const billable = document.getElementById("exp-billable").checked;
             const file = document.getElementById("exp-photo").files[0];
+            const userId = auth.currentUser.uid;
 
             try {
-                // Envoi de la photo dans Firebase Storage
-                const storageRef = storage.ref(`receipts/${Date.now()}_${file.name}`);
-                const snapshot = await storageRef.put(file);
+                const compressedBlob = await compressImage(file);
+                const storagePath = `receipts/${userId}/${Date.now()}_${file.name}`;
+                const storageRef = storage.ref(storagePath);
+                const snapshot = await storageRef.put(compressedBlob);
                 const photoUrl = await snapshot.ref.getDownloadURL();
 
-                // Enregistrement des données dans Firestore
                 await db.collection("expenses").add({
-                    date, 
-                    event: eventName, 
-                    type: expenseType, 
-                    total, 
-                    tps, 
-                    tvq, 
-                    photoUrl, 
+                    ownerId: userId,
+                    date,
+                    projectNumber,
+                    projectName,
+                    clientName,
+                    event: eventName,
+                    type: expenseType,
+                    supplier,
+                    invoiceNumber,
+                    subtotal,
+                    tps,
+                    tvq,
+                    total,
+                    billable,
+                    photoUrl,
+                    photoPath: storagePath,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
 
                 this.reset();
                 document.getElementById("exp-date").valueAsDate = new Date();
+                document.getElementById("receipt-preview").classList.add("hidden");
                 loadExpenses();
             } catch (err) {
                 alert("Erreur lors de l'enregistrement : " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Enregistrer la dépense";
             }
         });
 
-        // Chargement des données
+        // Chargement et calcul des KPIs
         async function loadExpenses() {
             const tbody = document.getElementById("expenses-table-body");
-            tbody.innerHTML = "<tr><td colspan='8' class='p-4 text-center text-slate-400'>Chargement...</td></tr>";
+            tbody.innerHTML = "<tr><td colspan='9' class='p-8 text-center text-slate-400'>Chargement...</td></tr>";
             
-            const snapshot = await db.collection("expenses").orderBy("date", "desc").get();
+            const snapshot = await db.collection("expenses")
+                .where("ownerId", "==", auth.currentUser.uid)
+                .orderBy("date", "desc")
+                .get();
+
             expensesCache = [];
             tbody.innerHTML = "";
+
+            if (snapshot.empty) {
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center p-8 text-slate-400">Aucune dépense enregistrée</td></tr>`;
+                updateKPIs([]);
+                return;
+            }
 
             snapshot.forEach(doc => {
                 const item = { id: doc.id, ...doc.data() };
@@ -220,26 +359,50 @@
                 tbody.innerHTML += `
                     <tr class="hover:bg-slate-50/80">
                         <td class="p-3">${item.date}</td>
-                        <td class="p-3 font-medium text-slate-900">${item.event || '-'}</td>
+                        <td class="p-3">
+                            <div class="font-medium text-slate-900">${item.projectName || '-'}</div>
+                            <div class="text-xs text-slate-400">${item.clientName || ''}</div>
+                        </td>
+                        <td class="p-3 font-semibold text-slate-700">${item.supplier || '-'}</td>
                         <td class="p-3 text-slate-600">${item.type || '-'}</td>
-                        <td class="p-3">${item.total.toFixed(2)} $</td>
+                        <td class="p-3 font-bold">${item.total.toFixed(2)} $</td>
                         <td class="p-3">${item.tps.toFixed(2)} $</td>
                         <td class="p-3">${item.tvq.toFixed(2)} $</td>
                         <td class="p-3"><a href="${item.photoUrl}" target="_blank" class="text-blue-600 underline font-medium">Voir</a></td>
-                        <td class="p-3"><button onclick="deleteExpense('${item.id}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td>
+                        <td class="p-3"><button onclick="deleteExpense('${item.id}', '${item.photoPath || ''}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td>
                     </tr>
                 `;
             });
+
+            updateKPIs(expensesCache);
         }
 
-        async function deleteExpense(id) {
-            if (confirm("Supprimer cette dépense ?")) {
+        function updateKPIs(data) {
+            const total = data.reduce((sum, e) => sum + e.total, 0);
+            const tps = data.reduce((sum, e) => sum + e.tps, 0);
+            const tvq = data.reduce((sum, e) => sum + e.tvq, 0);
+
+            document.getElementById("kpi-total").innerText = total.toFixed(2) + " $";
+            document.getElementById("kpi-tps").innerText = tps.toFixed(2) + " $";
+            document.getElementById("kpi-tvq").innerText = tvq.toFixed(2) + " $";
+            document.getElementById("kpi-count").innerText = data.length;
+        }
+
+        // Suppression propre de Firestore et du fichier Storage associé
+        async function deleteExpense(id, photoPath) {
+            if (!confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
+            try {
+                if (photoPath) {
+                    await storage.ref(photoPath).delete();
+                }
                 await db.collection("expenses").doc(id).delete();
                 loadExpenses();
+            } catch (err) {
+                alert("Erreur lors de la suppression : " + err.message);
             }
         }
 
-        // Export Excel avec les nouvelles colonnes
+        // Export Excel professionnel adapté pour un comptable
         function exportToExcel() {
             if (expensesCache.length === 0) {
                 alert("Aucune donnée à exporter.");
@@ -247,17 +410,24 @@
             }
             const data = expensesCache.map(exp => ({
                 "Date": exp.date,
-                "Événement": exp.event || '',
+                "No Projet": exp.projectNumber || '',
+                "Nom Projet": exp.projectName || '',
+                "Client": exp.clientName || '',
+                "Fournisseur": exp.supplier || '',
+                "Événement / Mandat": exp.event || '',
                 "Type de facture": exp.type || '',
-                "Total ($)": exp.total,
+                "No Facture": exp.invoiceNumber || '',
+                "Facturable": exp.billable ? "Oui" : "Non",
+                "Sous-Total ($)": exp.subtotal,
                 "TPS ($)": exp.tps,
                 "TVQ ($)": exp.tvq,
+                "Total ($)": exp.total,
                 "Lien Reçu": exp.photoUrl
             }));
             const ws = XLSX.utils.json_to_sheet(data);
             const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dépenses");
-            XLSX.writeFile(wb, "Rapport_Depenses_Comptable.xlsx");
+            XLSX.utils.book_append_sheet(wb, ws, "Dépenses Professionnelles");
+            XLSX.writeFile(wb, "Rapport_Depenses_Professionnelles.xlsx");
         }
     </script>
 </body>
