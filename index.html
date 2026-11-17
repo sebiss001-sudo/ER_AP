@@ -1,434 +1,423 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Suivi des Dépenses Professionnelles - ER_AP</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SheetJS pour l'export Excel -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-    <!-- FontAwesome pour les icônes -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" crossorigin="anonymous"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Suivi des Dépenses Professionnelles - ER_AP</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js" crossorigin="anonymous"></script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen font-sans pb-12">
 
-    <!-- Écran de Connexion Sécurisé -->
-    <div id="auth-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-4">
-            <div class="w-14 h-14 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center text-2xl shadow-lg">
-                <i class="fa-solid fa-lock"></i>
-            </div>
-            <h1 class="font-bold text-xl text-slate-900">Connexion Requise</h1>
-            <p class="text-sm text-slate-500">Accès sécurisé pour la gestion de vos dépenses.</p>
-            <input type="email" id="login-email" placeholder="Courriel" value="sebastien.bissonnette.vcat@gmail.com" class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-            <input type="password" id="login-password" placeholder="Mot de passe" class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-            <button onclick="handleLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition">Se connecter</button>
-            <p id="auth-error" class="text-red-500 text-xs"></p>
-        </div>
+<!-- Connexion (aucun courriel pré-rempli : le navigateur peut le mémoriser) -->
+<div id="auth-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+  <form id="login-form" class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-4">
+    <div class="w-14 h-14 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center text-2xl shadow-lg"><i class="fa-solid fa-lock"></i></div>
+    <h1 class="font-bold text-xl text-slate-900">Connexion requise</h1>
+    <p class="text-sm text-slate-500">Accès sécurisé pour la gestion de vos dépenses.</p>
+    <input type="email" id="login-email" name="username" autocomplete="username" placeholder="Courriel" required class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+    <input type="password" id="login-password" name="password" autocomplete="current-password" placeholder="Mot de passe" required class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
+    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition">Se connecter</button>
+    <p id="auth-error" class="text-red-500 text-xs"></p>
+  </form>
+</div>
+
+<div id="app-content" class="hidden max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+  <header class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+    <h1 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des dépenses professionnelles</h1>
+    <button id="logout-btn" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button>
+  </header>
+
+  <!-- Filtres -->
+  <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-end gap-3">
+    <div>
+      <label class="block text-xs font-semibold text-slate-500 mb-1">Mois</label>
+      <input type="month" id="filter-month" class="p-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
     </div>
-
-    <!-- Application Principale -->
-    <div id="app-content" class="hidden max-w-6xl mx-auto p-4 md:p-6 space-y-6">
-        <header class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-            <h1 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des Dépenses Professionnelles</h1>
-            <button onclick="handleLogout()" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button>
-        </header>
-
-        <!-- Tableau de Bord / KPI Cards -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <span class="text-xs font-semibold text-slate-400 uppercase">Total Dépenses (Mois)</span>
-                <div id="kpi-total" class="text-xl font-extrabold text-slate-800 mt-1">0,00 $</div>
-            </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <span class="text-xs font-semibold text-slate-400 uppercase">TPS Récupérable</span>
-                <div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div>
-            </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <span class="text-xs font-semibold text-slate-400 uppercase">TVQ Récupérable</span>
-                <div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div>
-            </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <span class="text-xs font-semibold text-slate-400 uppercase">Nombre de Reçus</span>
-                <div id="kpi-count" class="text-xl font-extrabold text-slate-800 mt-1">0</div>
-            </div>
-        </div>
-
-        <!-- Formulaire de Saisie -->
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-            <h2 class="font-bold text-slate-700 text-sm uppercase tracking-wider">Ajouter une dépense</h2>
-            <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Date</label>
-                    <input type="date" id="exp-date" required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Numéro de projet</label>
-                    <input type="text" id="exp-proj-num" placeholder="ex: 24056" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Nom du projet</label>
-                    <input type="text" id="exp-proj-name" placeholder="ex: CHUM" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Client</label>
-                    <input type="text" id="exp-client" placeholder="ex: Société Québécoise des Infrastructures" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Événement / Mandat</label>
-                    <input type="text" id="exp-event" placeholder="ex: Congrès, Réunion client..." required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Type de facture</label>
-                    <select id="exp-type" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option>Restaurant</option>
-                        <option>Hôtel</option>
-                        <option>Parking</option>
-                        <option>Taxi</option>
-                        <option>Carburant</option>
-                        <option>Location auto</option>
-                        <option>Frais de représentation</option>
-                        <option>Autre</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Nom du fournisseur</label>
-                    <input type="text" id="exp-supplier" placeholder="ex: Hilton, Indigo..." required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Numéro de facture</label>
-                    <input type="text" id="exp-invoice" placeholder="ex: F-12345" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Mode de taxes</label>
-                    <select id="tax-mode" onchange="calculateTaxes()" class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                        <option value="included">Taxes incluses (QC)</option>
-                        <option value="excluded">Taxes exclues / Hors QC</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Montant Total ($)</label>
-                    <input type="number" step="0.01" id="exp-amount" placeholder="0.00" oninput="calculateTaxes()" required class="w-full p-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">Sous-total (Hors taxes)</label>
-                    <input type="number" step="0.01" id="exp-subtotal" class="w-full p-2.5 border rounded-xl text-sm bg-slate-100" readonly>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">TPS (5%)</label>
-                    <input type="number" step="0.01" id="exp-tps" class="w-full p-2.5 border rounded-xl text-sm bg-slate-100" readonly>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-500 mb-1">TVQ (9.975%)</label>
-                    <input type="number" step="0.01" id="exp-tvq" class="w-full p-2.5 border rounded-xl text-sm bg-slate-100" readonly>
-                </div>
-                <div class="flex items-center pt-6">
-                    <label class="flex items-center cursor-pointer">
-                        <input type="checkbox" id="exp-billable" checked class="w-4 h-4 text-blue-600 rounded">
-                        <span class="ml-2 text-xs font-medium text-slate-600">Facturable au client</span>
-                    </label>
-                </div>
-                <div class="md:col-span-3 space-y-2">
-                    <label class="block text-xs font-semibold text-slate-500">Photo / Fichier du reçu</label>
-                    <input type="file" id="exp-photo" accept="image/*" capture="environment" required class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-                    <img id="receipt-preview" class="hidden max-h-40 rounded-xl border p-1 shadow-sm mt-2">
-                </div>
-                <div class="md:col-span-3 flex justify-end">
-                    <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition">Enregistrer la dépense</button>
-                </div>
-            </form>
-        </div>
-
-        <!-- Tableau et Export -->
-        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-            <div class="flex flex-col md:flex-row justify-between items-center gap-2">
-                <h2 class="font-bold text-slate-700 text-sm uppercase tracking-wider">Historique des dépenses</h2>
-                <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-2"><i class="fa-solid fa-file-excel"></i>Exporter pour le comptable (.xlsx)</button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse text-sm">
-                    <thead>
-                        <tr class="bg-slate-50 text-slate-500 text-xs">
-                            <th class="p-3 rounded-l-xl">Date</th>
-                            <th class="p-3">Projet / Client</th>
-                            <th class="p-3">Fournisseur</th>
-                            <th class="p-3">Type</th>
-                            <th class="p-3">Total ($)</th>
-                            <th class="p-3">TPS</th>
-                            <th class="p-3">TVQ</th>
-                            <th class="p-3">Reçu</th>
-                            <th class="p-3 rounded-r-xl">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
-                </table>
-            </div>
-        </div>
+    <div>
+      <label class="block text-xs font-semibold text-slate-500 mb-1">Projet</label>
+      <select id="filter-project" class="p-2 border rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option value="">Tous les projets</option></select>
     </div>
+    <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl transition">Tout afficher</button>
+  </div>
 
-    <!-- Script de configuration et logique Firebase -->
-    <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyD8b4Viivsau6HzgHDHenQGRgP2_bIV0qY",
-            authDomain: "erap-66a28.firebaseapp.com",
-            projectId: "erap-66a28",
-            storageBucket: "erap-66a28.firebasestorage.app",
-            messagingSenderId: "131124147434",
-            appId: "1:131124147434:web:c89bc9541ae0919cac1393"
-        };
+  <!-- KPI -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span id="kpi-label" class="text-xs font-semibold text-slate-400">Total des dépenses</span><div id="kpi-total" class="text-xl font-extrabold text-slate-800 mt-1">0,00 $</div></div>
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">TPS récupérable</span><div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div></div>
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">TVQ récupérable</span><div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div></div>
+    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">Nombre de reçus</span><div id="kpi-count" class="text-xl font-extrabold text-slate-800 mt-1">0</div></div>
+  </div>
 
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const storage = firebase.storage();
+  <!-- Formulaire -->
+  <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+    <h2 id="form-title" class="font-bold text-slate-700 text-sm">Ajouter une dépense</h2>
+    <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div><label class="lbl">Date</label><input type="date" id="exp-date" required class="inp"></div>
+      <div><label class="lbl">Numéro de projet</label><input type="text" id="exp-proj-num" placeholder="ex: 24056" class="inp"></div>
+      <div><label class="lbl">Nom du projet</label><input type="text" id="exp-proj-name" placeholder="ex: CHUM" class="inp"></div>
+      <div><label class="lbl">Client</label><input type="text" id="exp-client" placeholder="ex: Société québécoise des infrastructures" class="inp"></div>
+      <div><label class="lbl">Événement / Mandat</label><input type="text" id="exp-event" placeholder="ex: Congrès, réunion client…" required class="inp"></div>
+      <div><label class="lbl">Type de facture</label>
+        <select id="exp-type" class="inp bg-white"><option>Restaurant</option><option>Hôtel</option><option>Parking</option><option>Taxi</option><option>Carburant</option><option>Location auto</option><option>Frais de représentation</option><option>Autre</option></select></div>
+      <div><label class="lbl">Nom du fournisseur</label><input type="text" id="exp-supplier" placeholder="ex: Hilton, Indigo…" required class="inp"></div>
+      <div><label class="lbl">Numéro de facture</label><input type="text" id="exp-invoice" placeholder="ex: F-12345" class="inp"></div>
+      <div><label class="lbl">Mode de paiement</label>
+        <select id="exp-payment" class="inp bg-white"><option>Carte personnelle</option><option>Carte corporative</option><option>Comptant</option><option>Autre</option></select></div>
+      <div><label class="lbl">Mode de taxes</label>
+        <select id="tax-mode" class="inp bg-white">
+          <option value="included">Taxes incluses (QC)</option>
+          <option value="excluded">Sans taxes récupérables / hors QC</option>
+          <option value="manual">Saisie manuelle des taxes (TVH, etc.)</option>
+        </select></div>
+      <div><label class="lbl">Montant total ($)</label><input type="number" step="0.01" id="exp-amount" placeholder="0.00" required class="inp"></div>
+      <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp bg-slate-100" readonly></div>
+      <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp bg-slate-100" readonly></div>
+      <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp bg-slate-100" readonly></div>
+      <div><label class="lbl">TVH / autres taxes</label><input type="number" step="0.01" id="exp-other" class="inp bg-slate-100" readonly></div>
+      <div class="flex items-center">
+        <label class="flex items-center cursor-pointer"><input type="checkbox" id="exp-billable" checked class="w-4 h-4 text-blue-600 rounded"><span class="ml-2 text-xs font-medium text-slate-600">Facturable au client</span></label>
+      </div>
+      <div class="md:col-span-3 space-y-2">
+        <label class="lbl">Photo ou PDF du reçu <span id="photo-hint" class="font-normal text-slate-400"></span></label>
+        <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+        <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-40 rounded-xl border p-1 shadow-sm mt-2">
+      </div>
+      <div class="md:col-span-3 flex justify-end gap-2">
+        <button type="button" id="cancel-btn" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition">Annuler la modification</button>
+        <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition">Enregistrer la dépense</button>
+      </div>
+    </form>
+  </div>
 
-        let expensesCache = [];
+  <!-- Historique -->
+  <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-2">
+      <h2 class="font-bold text-slate-700 text-sm">Historique des dépenses</h2>
+      <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-2"><i class="fa-solid fa-file-excel"></i>Exporter la sélection (.xlsx)</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left border-collapse text-sm">
+        <thead><tr class="bg-slate-50 text-slate-500 text-xs">
+          <th class="p-3 rounded-l-xl">Date</th><th class="p-3">Projet / Client</th><th class="p-3">Fournisseur</th><th class="p-3">Type</th>
+          <th class="p-3">Total</th><th class="p-3">TPS</th><th class="p-3">TVQ</th><th class="p-3">Reçu</th><th class="p-3 rounded-r-xl">Actions</th>
+        </tr></thead>
+        <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 
-        // Gestion de l'authentification
-        auth.onAuthStateChanged((user) => {
-            if (user) {
-                document.getElementById("auth-modal").classList.add("hidden");
-                document.getElementById("app-content").classList.remove("hidden");
-                loadExpenses();
-                document.getElementById("exp-date").valueAsDate = new Date();
-            } else {
-                document.getElementById("auth-modal").classList.remove("hidden");
-                document.getElementById("app-content").classList.add("hidden");
-            }
-        });
+<style>
+  .lbl{display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.25rem}
+  .inp{width:100%;padding:.625rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem;outline:none}
+  .inp:focus{box-shadow:0 0 0 2px #3b82f6}
+  .inp:not([readonly]){background-color:#fff}
+</style>
 
-        function handleLogin() {
-            const email = document.getElementById("login-email").value;
-            const pass = document.getElementById("login-password").value;
-            auth.signInWithEmailAndPassword(email, pass).catch(err => {
-                document.getElementById("auth-error").innerText = err.message;
-            });
-        }
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyD8b4Viivsau6HzgHDHenQGRgP2_bIV0qY",
+  authDomain: "erap-66a28.firebaseapp.com",
+  projectId: "erap-66a28",
+  storageBucket: "erap-66a28.firebasestorage.app",
+  messagingSenderId: "131124147434",
+  appId: "1:131124147434:web:c89bc9541ae0919cac1393"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth(), db = firebase.firestore(), storage = firebase.storage();
 
-        function handleLogout() {
-            auth.signOut();
-        }
+const $ = id => document.getElementById(id);
+let expensesCache = [];
+let editingId = null;
 
-        // Prévisualisation du reçu
-        document.getElementById("exp-photo").addEventListener("change", e => {
-            const file = e.target.files[0];
-            const preview = document.getElementById("receipt-preview");
-            if (!file) {
-                preview.classList.add("hidden");
-                return;
-            }
-            preview.src = URL.createObjectURL(file);
-            preview.classList.remove("hidden");
-        });
+// ---------- Utilitaires ----------
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
+const num = v => parseFloat(v) || 0;
+const fmt = n => Number(n || 0).toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
+const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const safeUrl = u => /^https:\/\//.test(u || "") ? u : "#";
 
-        // Compression automatique de l'image (max 1500px, qualité 0.75)
-        function compressImage(file) {
-            return new Promise((resolve) => {
-                const canvas = document.createElement("canvas");
-                const img = new Image();
-                img.onload = () => {
-                    const MAX = 1500;
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > MAX) {
-                        height *= MAX / width;
-                        width = MAX;
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext("2d");
-                    ctx.drawImage(img, 0, 0, width, height);
-                    canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.75);
-                };
-                img.src = URL.createObjectURL(file);
-            });
-        }
+// ---------- Authentification ----------
+auth.onAuthStateChanged(user => {
+  $("auth-modal").classList.toggle("hidden", !!user);
+  $("app-content").classList.toggle("hidden", !user);
+  if (user) { $("exp-date").value = todayStr(); $("filter-month").value = todayStr().slice(0, 7); loadExpenses(); }
+});
+$("login-form").addEventListener("submit", e => {
+  e.preventDefault();
+  $("auth-error").textContent = "";
+  auth.signInWithEmailAndPassword($("login-email").value.trim(), $("login-password").value)
+    .catch(() => { $("auth-error").textContent = "Courriel ou mot de passe invalide."; });
+});
+$("logout-btn").addEventListener("click", () => auth.signOut());
 
-        // Calcul dynamique des taxes et sous-total
-        function calculateTaxes() {
-            const amount = parseFloat(document.getElementById("exp-amount").value) || 0;
-            const mode = document.getElementById("tax-mode").value;
-            let subtotal = 0, tps = 0, tvq = 0;
+// ---------- Taxes ----------
+function setTaxFieldsEditable(manual) {
+  ["exp-tps", "exp-tvq", "exp-other"].forEach(id => { $(id).readOnly = !manual; $(id).classList.toggle("bg-slate-100", !manual); });
+}
+function calculateTaxes() {
+  const amount = num($("exp-amount").value), mode = $("tax-mode").value;
+  setTaxFieldsEditable(mode === "manual");
+  if (mode === "manual") {
+    $("exp-subtotal").value = r2(amount - num($("exp-tps").value) - num($("exp-tvq").value) - num($("exp-other").value)).toFixed(2);
+    return;
+  }
+  let sub = amount, tps = 0, tvq = 0;
+  if (mode === "included") {
+    sub = r2(amount / 1.14975);
+    tps = r2(sub * 0.05);
+    tvq = r2(amount - sub - tps); // par différence : la somme tombe toujours juste
+  }
+  $("exp-subtotal").value = sub.toFixed(2);
+  $("exp-tps").value = tps.toFixed(2);
+  $("exp-tvq").value = tvq.toFixed(2);
+  $("exp-other").value = "0.00";
+}
+["exp-amount", "exp-tps", "exp-tvq", "exp-other"].forEach(id => $(id).addEventListener("input", calculateTaxes));
+$("tax-mode").addEventListener("change", () => {
+  if ($("tax-mode").value === "manual") { $("exp-tps").value = $("exp-tvq").value = $("exp-other").value = "0.00"; }
+  calculateTaxes();
+});
 
-            if (mode === "included") {
-                subtotal = amount / 1.14975;
-                tps = subtotal * 0.05;
-                tvq = subtotal * 0.09975;
-            } else {
-                subtotal = amount;
-                tps = 0;
-                tvq = 0;
-            }
+// ---------- Fichier du reçu ----------
+$("exp-photo").addEventListener("change", e => {
+  const file = e.target.files[0], preview = $("receipt-preview");
+  if (!file || !file.type.startsWith("image/")) { preview.classList.add("hidden"); return; }
+  preview.src = URL.createObjectURL(file);
+  preview.classList.remove("hidden");
+});
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 1500;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h *= MAX / w; w = MAX; }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error("Compression impossible")), "image/jpeg", 0.75);
+    };
+    img.onerror = () => reject(new Error("Image illisible"));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
-            document.getElementById("exp-subtotal").value = subtotal.toFixed(2);
-            document.getElementById("exp-tps").value = tps.toFixed(2);
-            document.getElementById("exp-tvq").value = tvq.toFixed(2);
-        }
+// ---------- Formulaire : ajout / modification ----------
+function resetForm() {
+  editingId = null;
+  $("expense-form").reset();
+  $("exp-date").value = todayStr();
+  $("receipt-preview").classList.add("hidden");
+  $("form-title").textContent = "Ajouter une dépense";
+  $("submit-btn").textContent = "Enregistrer la dépense";
+  $("cancel-btn").classList.add("hidden");
+  $("photo-hint").textContent = "";
+  calculateTaxes();
+}
+$("cancel-btn").addEventListener("click", resetForm);
 
-        // Soumission sécurisée avec protection anti-double-clic
-        document.getElementById("expense-form").addEventListener("submit", async function(e) {
-            e.preventDefault();
-            const btn = document.getElementById("submit-btn");
-            btn.disabled = true;
-            btn.innerText = "Enregistrement en cours...";
+function startEdit(id) {
+  const e = expensesCache.find(x => x.id === id);
+  if (!e) return;
+  editingId = id;
+  $("exp-date").value = e.date || "";
+  $("exp-proj-num").value = e.projectNumber || "";
+  $("exp-proj-name").value = e.projectName || "";
+  $("exp-client").value = e.clientName || "";
+  $("exp-event").value = e.event || "";
+  $("exp-type").value = e.type || "Autre";
+  $("exp-supplier").value = e.supplier || "";
+  $("exp-invoice").value = e.invoiceNumber || "";
+  $("exp-payment").value = e.paymentMethod || "Carte personnelle";
+  $("tax-mode").value = "manual"; // conserve exactement les montants enregistrés
+  $("exp-amount").value = e.total;
+  $("exp-tps").value = (e.tps ?? 0).toFixed(2);
+  $("exp-tvq").value = (e.tvq ?? 0).toFixed(2);
+  $("exp-other").value = (e.otherTax ?? 0).toFixed(2);
+  $("exp-billable").checked = !!e.billable;
+  $("exp-photo").value = "";
+  $("receipt-preview").classList.add("hidden");
+  $("photo-hint").textContent = "(laisser vide pour garder le reçu actuel)";
+  $("form-title").textContent = "Modifier la dépense";
+  $("submit-btn").textContent = "Enregistrer les modifications";
+  $("cancel-btn").classList.remove("hidden");
+  calculateTaxes();
+  $("expense-form").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
-            const date = document.getElementById("exp-date").value;
-            const projectNumber = document.getElementById("exp-proj-num").value;
-            const projectName = document.getElementById("exp-proj-name").value;
-            const clientName = document.getElementById("exp-client").value;
-            const eventName = document.getElementById("exp-event").value;
-            const expenseType = document.getElementById("exp-type").value;
-            const supplier = document.getElementById("exp-supplier").value;
-            const invoiceNumber = document.getElementById("exp-invoice").value;
-            const total = parseFloat(document.getElementById("exp-amount").value);
-            const subtotal = parseFloat(document.getElementById("exp-subtotal").value);
-            const tps = parseFloat(document.getElementById("exp-tps").value);
-            const tvq = parseFloat(document.getElementById("exp-tvq").value);
-            const billable = document.getElementById("exp-billable").checked;
-            const file = document.getElementById("exp-photo").files[0];
-            const userId = auth.currentUser.uid;
+$("expense-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const btn = $("submit-btn"), label = btn.textContent;
+  const file = $("exp-photo").files[0];
+  const existing = editingId ? expensesCache.find(x => x.id === editingId) : null;
 
-            try {
-                const compressedBlob = await compressImage(file);
-                const storagePath = `receipts/${userId}/${Date.now()}_${file.name}`;
-                const storageRef = storage.ref(storagePath);
-                const snapshot = await storageRef.put(compressedBlob);
-                const photoUrl = await snapshot.ref.getDownloadURL();
+  if (!file && !existing) { alert("Ajoutez une photo ou un PDF du reçu."); return; }
+  btn.disabled = true; btn.textContent = "Enregistrement en cours…";
 
-                await db.collection("expenses").add({
-                    ownerId: userId,
-                    date,
-                    projectNumber,
-                    projectName,
-                    clientName,
-                    event: eventName,
-                    type: expenseType,
-                    supplier,
-                    invoiceNumber,
-                    subtotal,
-                    tps,
-                    tvq,
-                    total,
-                    billable,
-                    photoUrl,
-                    photoPath: storagePath,
-                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                });
+  const userId = auth.currentUser.uid;
+  const data = {
+    ownerId: userId,
+    date: $("exp-date").value,
+    projectNumber: $("exp-proj-num").value.trim(),
+    projectName: $("exp-proj-name").value.trim(),
+    clientName: $("exp-client").value.trim(),
+    event: $("exp-event").value.trim(),
+    type: $("exp-type").value,
+    supplier: $("exp-supplier").value.trim(),
+    invoiceNumber: $("exp-invoice").value.trim(),
+    paymentMethod: $("exp-payment").value,
+    taxMode: $("tax-mode").value,
+    subtotal: num($("exp-subtotal").value),
+    tps: num($("exp-tps").value),
+    tvq: num($("exp-tvq").value),
+    otherTax: num($("exp-other").value),
+    total: num($("exp-amount").value),
+    billable: $("exp-billable").checked
+  };
 
-                this.reset();
-                document.getElementById("exp-date").valueAsDate = new Date();
-                document.getElementById("receipt-preview").classList.add("hidden");
-                loadExpenses();
-            } catch (err) {
-                alert("Erreur lors de l'enregistrement : " + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Enregistrer la dépense";
-            }
-        });
+  try {
+    let oldPath = null;
+    if (file) {
+      const isPdf = file.type === "application/pdf";
+      const body = isPdf ? file : await compressImage(file);
+      const safeName = file.name.replace(/[^\w.\-]/g, "_");
+      const path = `receipts/${userId}/${Date.now()}_${safeName}`;
+      const snap = await storage.ref(path).put(body);
+      data.photoUrl = await snap.ref.getDownloadURL();
+      data.photoPath = path;
+      data.isPdf = isPdf;
+      if (existing) oldPath = existing.photoPath;
+    }
+    if (existing) {
+      await db.collection("expenses").doc(editingId).update(data);
+      if (oldPath) storage.ref(oldPath).delete().catch(() => {});
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("expenses").add(data);
+    }
+    resetForm();
+    await loadExpenses();
+  } catch (err) {
+    alert("Erreur lors de l'enregistrement : " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = editingId ? "Enregistrer les modifications" : "Enregistrer la dépense";
+    if (!editingId) btn.textContent = "Enregistrer la dépense";
+  }
+});
 
-        // Chargement et calcul des KPIs
-        async function loadExpenses() {
-            const tbody = document.getElementById("expenses-table-body");
-            tbody.innerHTML = "<tr><td colspan='9' class='p-8 text-center text-slate-400'>Chargement...</td></tr>";
-            
-            const snapshot = await db.collection("expenses")
-                .where("ownerId", "==", auth.currentUser.uid)
-                .orderBy("date", "desc")
-                .get();
+// ---------- Chargement, filtres, affichage ----------
+async function loadExpenses() {
+  const tbody = $("expenses-table-body");
+  tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Chargement…</td></tr>`;
+  try {
+    // Pas d'orderBy côté serveur : aucun index composite à créer. Le tri se fait ici.
+    const snap = await db.collection("expenses").where("ownerId", "==", auth.currentUser.uid).get();
+    expensesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    rebuildProjectFilter();
+    render();
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-red-500">Impossible de charger les dépenses : ${esc(err.message)}</td></tr>`;
+  }
+}
+const projKey = e => e.projectNumber || e.projectName || "";
+const projLabel = e => [e.projectNumber, e.projectName].filter(Boolean).join(" – ");
 
-            expensesCache = [];
-            tbody.innerHTML = "";
+function rebuildProjectFilter() {
+  const sel = $("filter-project"), current = sel.value, seen = new Map();
+  expensesCache.forEach(e => { if (projKey(e) && !seen.has(projKey(e))) seen.set(projKey(e), projLabel(e)); });
+  sel.innerHTML = `<option value="">Tous les projets</option>` +
+    [...seen].map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
+  sel.value = seen.has(current) ? current : "";
+}
+function getFiltered() {
+  const m = $("filter-month").value, p = $("filter-project").value;
+  return expensesCache.filter(e => (!m || (e.date || "").startsWith(m)) && (!p || projKey(e) === p));
+}
+function render() {
+  const data = getFiltered(), tbody = $("expenses-table-body");
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center p-8 text-slate-400">Aucune dépense pour cette sélection</td></tr>`;
+  } else {
+    tbody.innerHTML = data.map(e => `
+      <tr class="hover:bg-slate-50/80">
+        <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
+        <td class="p-3"><div class="font-medium text-slate-900">${esc(e.projectName || "-")}</div><div class="text-xs text-slate-400">${esc(e.clientName || "")}</div></td>
+        <td class="p-3 font-semibold text-slate-700">${esc(e.supplier || "-")}</td>
+        <td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
+        <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}</td>
+        <td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td>
+        <td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
+        <td class="p-3"><a href="${esc(safeUrl(e.photoUrl))}" target="_blank" rel="noopener" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</a></td>
+        <td class="p-3 whitespace-nowrap">
+          <button data-edit="${esc(e.id)}" class="text-blue-500 hover:text-blue-700 mr-3" title="Modifier"><i class="fa-solid fa-pen"></i></button>
+          <button data-del="${esc(e.id)}" class="text-red-400 hover:text-red-600" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`).join("");
+  }
+  updateKPIs(data);
+}
+function updateKPIs(data) {
+  const sum = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
+  const m = $("filter-month").value;
+  $("kpi-label").textContent = m ? "Total du mois" : "Total des dépenses";
+  $("kpi-total").textContent = fmt(sum("total"));
+  $("kpi-tps").textContent = fmt(sum("tps"));
+  $("kpi-tvq").textContent = fmt(sum("tvq"));
+  $("kpi-count").textContent = data.length;
+}
+$("filter-month").addEventListener("change", render);
+$("filter-project").addEventListener("change", render);
+$("filter-reset").addEventListener("click", () => { $("filter-month").value = ""; $("filter-project").value = ""; render(); });
 
-            if (snapshot.empty) {
-                tbody.innerHTML = `<tr><td colspan="9" class="text-center p-8 text-slate-400">Aucune dépense enregistrée</td></tr>`;
-                updateKPIs([]);
-                return;
-            }
+$("expenses-table-body").addEventListener("click", async ev => {
+  const editBtn = ev.target.closest("[data-edit]"), delBtn = ev.target.closest("[data-del]");
+  if (editBtn) return startEdit(editBtn.dataset.edit);
+  if (delBtn) {
+    const e = expensesCache.find(x => x.id === delBtn.dataset.del);
+    if (!e || !confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
+    try {
+      if (e.photoPath) await storage.ref(e.photoPath).delete().catch(() => {});
+      await db.collection("expenses").doc(e.id).delete();
+      if (editingId === e.id) resetForm();
+      loadExpenses();
+    } catch (err) { alert("Erreur lors de la suppression : " + err.message); }
+  }
+});
 
-            snapshot.forEach(doc => {
-                const item = { id: doc.id, ...doc.data() };
-                expensesCache.push(item);
+// ---------- Export Excel (sélection filtrée) ----------
+$("export-btn").addEventListener("click", () => {
+  const data = getFiltered().slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  if (!data.length) { alert("Aucune donnée à exporter."); return; }
+  const headers = ["Date","No projet","Nom projet","Client","Fournisseur","Événement / Mandat","Type de facture","No facture","Paiement","Facturable","Sous-total ($)","TPS ($)","TVQ ($)","TVH / autres ($)","Total ($)","Reçu"];
+  const rows = data.map(e => [e.date, e.projectNumber || "", e.projectName || "", e.clientName || "", e.supplier || "", e.event || "", e.type || "", e.invoiceNumber || "", e.paymentMethod || "", e.billable ? "Oui" : "Non", e.subtotal || 0, e.tps || 0, e.tvq || 0, e.otherTax || 0, e.total || 0, e.photoUrl ? "Voir le reçu" : ""]);
+  const tot = i => r2(data.reduce((s, e) => s + (rows[data.indexOf(e)][i] || 0), 0));
+  rows.push(["TOTAL","","","","","","","","","", tot(10), tot(11), tot(12), tot(13), tot(14), ""]);
 
-                tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50/80">
-                        <td class="p-3">${item.date}</td>
-                        <td class="p-3">
-                            <div class="font-medium text-slate-900">${item.projectName || '-'}</div>
-                            <div class="text-xs text-slate-400">${item.clientName || ''}</div>
-                        </td>
-                        <td class="p-3 font-semibold text-slate-700">${item.supplier || '-'}</td>
-                        <td class="p-3 text-slate-600">${item.type || '-'}</td>
-                        <td class="p-3 font-bold">${item.total.toFixed(2)} $</td>
-                        <td class="p-3">${item.tps.toFixed(2)} $</td>
-                        <td class="p-3">${item.tvq.toFixed(2)} $</td>
-                        <td class="p-3"><a href="${item.photoUrl}" target="_blank" class="text-blue-600 underline font-medium">Voir</a></td>
-                        <td class="p-3"><button onclick="deleteExpense('${item.id}', '${item.photoPath || ''}')" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-trash"></i></button></td>
-                    </tr>
-                `;
-            });
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws["!cols"] = [12,10,22,28,22,26,18,14,18,10,14,12,12,14,14,14].map(w => ({ wch: w }));
+  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+  for (let r = 1; r <= rows.length; r++) {
+    for (let c = 10; c <= 14; c++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell) cell.z = '#,##0.00 "$"'; }
+    const link = ws[XLSX.utils.encode_cell({ r, c: 15 })], e = data[r - 1];
+    if (link && e && e.photoUrl) link.l = { Target: e.photoUrl };
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Dépenses");
+  const m = $("filter-month").value;
+  XLSX.writeFile(wb, `Rapport_Depenses${m ? "_" + m : ""}.xlsx`);
+});
 
-            updateKPIs(expensesCache);
-        }
-
-        function updateKPIs(data) {
-            const total = data.reduce((sum, e) => sum + e.total, 0);
-            const tps = data.reduce((sum, e) => sum + e.tps, 0);
-            const tvq = data.reduce((sum, e) => sum + e.tvq, 0);
-
-            document.getElementById("kpi-total").innerText = total.toFixed(2) + " $";
-            document.getElementById("kpi-tps").innerText = tps.toFixed(2) + " $";
-            document.getElementById("kpi-tvq").innerText = tvq.toFixed(2) + " $";
-            document.getElementById("kpi-count").innerText = data.length;
-        }
-
-        // Suppression propre de Firestore et du fichier Storage associé
-        async function deleteExpense(id, photoPath) {
-            if (!confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
-            try {
-                if (photoPath) {
-                    await storage.ref(photoPath).delete();
-                }
-                await db.collection("expenses").doc(id).delete();
-                loadExpenses();
-            } catch (err) {
-                alert("Erreur lors de la suppression : " + err.message);
-            }
-        }
-
-        // Export Excel professionnel adapté pour un comptable
-        function exportToExcel() {
-            if (expensesCache.length === 0) {
-                alert("Aucune donnée à exporter.");
-                return;
-            }
-            const data = expensesCache.map(exp => ({
-                "Date": exp.date,
-                "No Projet": exp.projectNumber || '',
-                "Nom Projet": exp.projectName || '',
-                "Client": exp.clientName || '',
-                "Fournisseur": exp.supplier || '',
-                "Événement / Mandat": exp.event || '',
-                "Type de facture": exp.type || '',
-                "No Facture": exp.invoiceNumber || '',
-                "Facturable": exp.billable ? "Oui" : "Non",
-                "Sous-Total ($)": exp.subtotal,
-                "TPS ($)": exp.tps,
-                "TVQ ($)": exp.tvq,
-                "Total ($)": exp.total,
-                "Lien Reçu": exp.photoUrl
-            }));
-            const ws = XLSX.utils.json_to_sheet(data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Dépenses Professionnelles");
-            XLSX.writeFile(wb, "Rapport_Depenses_Professionnelles.xlsx");
-        }
-    </script>
+calculateTaxes();
+</script>
 </body>
 </html>
