@@ -36,7 +36,7 @@
 
   <div class="card !p-4 flex flex-wrap items-end gap-3">
     <div><label class="lbl">Mois</label><input type="month" id="filter-month" class="inp"></div>
-    <div><label class="lbl">Projet</label><select id="filter-project" class="inp"><option value="">Tous les projets</option></select></div>
+    <div><label class="lbl">Événement</label><select id="filter-event" class="inp"><option value="">Tous les événements</option></select></div>
     <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl">Tout afficher</button>
   </div>
 
@@ -51,14 +51,13 @@
     <h2 id="form-title" class="font-bold text-slate-700 text-sm">Ajouter une dépense</h2>
     <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div><label class="lbl">Date</label><input type="date" id="exp-date" required class="inp"></div>
-      <div><label class="lbl">Numéro de projet</label><input id="exp-proj-num" placeholder="ex: 24056" class="inp"></div>
-      <div><label class="lbl">Nom du projet</label><input id="exp-proj-name" placeholder="ex: CHUM" class="inp"></div>
-      <div><label class="lbl">Client</label><input id="exp-client" class="inp"></div>
-      <div><label class="lbl">Événement / Mandat</label><input id="exp-event" required class="inp"></div>
-      <div><label class="lbl">Type de facture</label><select id="exp-type" class="inp"><option>Restaurant</option><option>Hôtel</option><option>Parking</option><option>Taxi</option><option>Carburant</option><option>Location auto</option><option>Frais de représentation</option><option>Autre</option></select></div>
+      <div>
+        <label class="lbl">Événement (nom du dossier)</label>
+        <select id="exp-event" class="inp"></select>
+        <input id="exp-event-new" placeholder="Nom du nouvel événement" class="inp hidden mt-2">
+      </div>
+      <div><label class="lbl">Type de dépense</label><select id="exp-type" class="inp"><option>Restaurant</option><option>Hôtel</option><option>Parking</option><option>Taxi</option><option>Carburant</option><option>Location auto</option><option>Frais de représentation</option><option>Autre</option></select></div>
       <div><label class="lbl">Fournisseur</label><input id="exp-supplier" required placeholder="ex: Hilton, Indigo…" class="inp"></div>
-      <div><label class="lbl">Numéro de facture</label><input id="exp-invoice" class="inp"></div>
-      <div><label class="lbl">Mode de paiement</label><select id="exp-payment" class="inp"><option>Carte personnelle</option><option>Carte corporative</option><option>Comptant</option><option>Autre</option></select></div>
       <div><label class="lbl">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxes récupérables / hors QC</option><option value="manual">Saisie manuelle (TVH, etc.)</option></select></div>
       <div><label class="lbl">Montant total ($)</label><input type="number" step="0.01" id="exp-amount" required class="inp"></div>
       <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp" readonly></div>
@@ -84,18 +83,16 @@
       <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-2"><i class="fa-solid fa-file-excel"></i>Exporter la sélection (.xlsx)</button>
     </div>
     <div class="overflow-x-auto"><table class="w-full text-left text-sm">
-      <thead><tr class="bg-slate-50 text-slate-500 text-xs"><th class="p-3">Date</th><th class="p-3">Projet / Client</th><th class="p-3">Fournisseur</th><th class="p-3">Type</th><th class="p-3">Total</th><th class="p-3">TPS</th><th class="p-3">TVQ</th><th class="p-3">Reçu</th><th class="p-3">Actions</th></tr></thead>
+      <thead><tr class="bg-slate-50 text-slate-500 text-xs"><th class="p-3">Date</th><th class="p-3">Événement</th><th class="p-3">Fournisseur</th><th class="p-3">Type</th><th class="p-3">Total</th><th class="p-3">TPS</th><th class="p-3">TVQ</th><th class="p-3">Reçu</th><th class="p-3">Actions</th></tr></thead>
       <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
     </table></div>
   </div>
 </div>
 
 <script>
-// ====== À MODIFIER : l'« Application (client) ID » obtenu dans Azure ======
 const CLIENT_ID = "9e37def5-30fd-4123-a0c8-b4b4785bf81b";
 // "consumers" = comptes Microsoft personnels (Outlook, Hotmail). Pour aussi accepter les comptes de travail : "common".
 const AUTHORITY = "https://login.microsoftonline.com/consumers";
-// =========================================================================
 
 const SCOPES = ["Files.ReadWrite.AppFolder"]; // accès limité au dossier de l'app dans OneDrive
 const G = "https://graph.microsoft.com/v1.0/me/drive";
@@ -106,8 +103,10 @@ const num = v => parseFloat(v) || 0;
 const fmt = n => Number(n || 0).toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
 const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const safeUrl = u => /^https:\/\//.test(u || "") ? u : "#";
+// Nom de dossier valide dans OneDrive
+const folderName = n => n.replace(/[\\\/:*?"<>|#%~]/g, "-").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 80) || "Sans nom";
 
-let expenses = [], etag = null, editingId = null;
+let expenses = [], events = [], etag = null, editingId = null;
 const app = new msal.PublicClientApplication({
   auth: { clientId: CLIENT_ID, authority: AUTHORITY, redirectUri: location.origin + location.pathname },
   cache: { cacheLocation: "localStorage" }
@@ -129,10 +128,7 @@ async function init() {
     await refresh();
   } catch (e) { $("auth-error").textContent = "Erreur de connexion : " + e.message; }
 }
-$("login-btn").addEventListener("click", () => {
-  if (CLIENT_ID.startsWith("COLLE")) { $("auth-error").textContent = "Ajoute d'abord ton ID client Azure dans le fichier."; return; }
-  app.loginRedirect({ scopes: SCOPES });
-});
+$("login-btn").addEventListener("click", () => app.loginRedirect({ scopes: SCOPES }));
 $("logout-btn").addEventListener("click", () => app.logoutRedirect({ account: app.getActiveAccount() }));
 
 async function token() {
@@ -146,31 +142,63 @@ async function graph(path, opt = {}) {
   return r;
 }
 
-// ---------- Données (un fichier depenses.json dans OneDrive) ----------
+// ---------- Données (depenses.json dans OneDrive) ----------
 async function loadData() {
   try {
     const meta = await (await graph("/special/approot:/depenses.json")).json();
     etag = meta.eTag;
-    expenses = (await (await fetch(meta["@microsoft.graph.downloadUrl"])).json()).expenses || [];
-  } catch (e) { if (e.status === 404) { etag = null; expenses = []; } else throw e; }
+    const j = await (await fetch(meta["@microsoft.graph.downloadUrl"])).json();
+    expenses = j.expenses || []; events = j.events || [];
+  } catch (e) { if (e.status === 404) { etag = null; expenses = []; events = []; } else throw e; }
 }
 async function saveData() {
   const h = { "Content-Type": "application/json" };
   if (etag) h["If-Match"] = etag; // refuse d'écraser une version plus récente
-  const r = await graph("/special/approot:/depenses.json:/content", { method: "PUT", headers: h, body: JSON.stringify({ version: 1, expenses }) });
+  const r = await graph("/special/approot:/depenses.json:/content", { method: "PUT", headers: h, body: JSON.stringify({ version: 2, events, expenses }) });
   etag = (await r.json()).eTag;
 }
-async function uploadReceipt(body, name, date) {
-  const r = await graph(`/special/approot:/Recus/${date.slice(0, 7)}/${encodeURIComponent(name)}:/content?@microsoft.graph.conflictBehavior=rename`,
+// Le dossier de l'événement est créé automatiquement lors du premier envoi
+async function uploadReceipt(body, name, event) {
+  const r = await graph(`/special/approot:/${encodeURIComponent(folderName(event))}/${encodeURIComponent(name)}:/content?@microsoft.graph.conflictBehavior=rename`,
     { method: "PUT", headers: { "Content-Type": body.type || "application/octet-stream" }, body });
   const j = await r.json();
   return { photoId: j.id, photoUrl: j.webUrl };
 }
+async function ensureFolder(name) {
+  try { return (await (await graph("/special/approot:/" + encodeURIComponent(name))).json()).id; }
+  catch (e) {
+    if (e.status !== 404) throw e;
+    const r = await graph("/special/approot/children", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }) });
+    return (await r.json()).id;
+  }
+}
+async function moveReceipt(itemId, event) {
+  const parentId = await ensureFolder(folderName(event));
+  const r = await graph("/items/" + itemId, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parentReference: { id: parentId } }) });
+  return r.json();
+}
 const deleteReceipt = id => id ? graph("/items/" + id, { method: "DELETE" }).catch(() => {}) : Promise.resolve();
 async function refresh() {
   $("expenses-table-body").innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Chargement…</td></tr>`;
-  try { await loadData(); rebuildProjectFilter(); render(); }
+  try { await loadData(); buildEventSelect(); rebuildEventFilter(); render(); }
   catch (e) { $("expenses-table-body").innerHTML = `<tr><td colspan="9" class="p-8 text-center text-red-500">Impossible de charger les dépenses : ${esc(e.message)}</td></tr>`; }
+}
+
+// ---------- Événements ----------
+const allEvents = () => [...new Set([...events, ...expenses.map(e => e.event).filter(Boolean)])].sort((a, b) => a.localeCompare(b, "fr"));
+function toggleNew() { const n = $("exp-event").value === "__new__"; $("exp-event-new").classList.toggle("hidden", !n); if (n) $("exp-event-new").focus(); }
+function buildEventSelect(selected = "") {
+  const list = allEvents();
+  $("exp-event").innerHTML = `<option value="">Choisir un événement…</option>` + list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("") + `<option value="__new__">➕ Nouvel événement…</option>`;
+  $("exp-event").value = list.includes(selected) ? selected : "";
+  $("exp-event-new").value = ""; toggleNew();
+}
+$("exp-event").addEventListener("change", toggleNew);
+function rebuildEventFilter() {
+  const sel = $("filter-event"), cur = sel.value, list = allEvents();
+  sel.innerHTML = `<option value="">Tous les événements</option>` + list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  sel.value = list.includes(cur) ? cur : "";
 }
 
 // ---------- Taxes ----------
@@ -206,19 +234,17 @@ function compressImage(file) {
 }
 
 // ---------- Formulaire ----------
-function resetForm() {
-  editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr();
+function resetForm(keepEvent = "") {
+  editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr(); buildEventSelect(keepEvent);
   $("receipt-preview").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
   $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
   calculateTaxes();
 }
-$("cancel-btn").addEventListener("click", resetForm);
+$("cancel-btn").addEventListener("click", () => resetForm());
 function startEdit(id) {
   const e = expenses.find(x => x.id === id); if (!e) return;
-  editingId = id;
-  $("exp-date").value = e.date || ""; $("exp-proj-num").value = e.projectNumber || ""; $("exp-proj-name").value = e.projectName || "";
-  $("exp-client").value = e.clientName || ""; $("exp-event").value = e.event || ""; $("exp-type").value = e.type || "Autre";
-  $("exp-supplier").value = e.supplier || ""; $("exp-invoice").value = e.invoiceNumber || ""; $("exp-payment").value = e.paymentMethod || "Carte personnelle";
+  editingId = id; buildEventSelect(e.event);
+  $("exp-date").value = e.date || ""; $("exp-type").value = e.type || "Autre"; $("exp-supplier").value = e.supplier || "";
   $("tax-mode").value = "manual"; $("exp-amount").value = e.total;
   $("exp-tps").value = (e.tps ?? 0).toFixed(2); $("exp-tvq").value = (e.tvq ?? 0).toFixed(2); $("exp-other").value = (e.otherTax ?? 0).toFixed(2);
   $("exp-billable").checked = !!e.billable; $("exp-photo").value = ""; $("receipt-preview").classList.add("hidden");
@@ -233,52 +259,55 @@ async function handleConflict(e) {
 $("expense-form").addEventListener("submit", async ev => {
   ev.preventDefault();
   const file = $("exp-photo").files[0], existing = editingId ? expenses.find(x => x.id === editingId) : null;
+  let evName = $("exp-event").value;
+  if (evName === "__new__") {
+    const typed = $("exp-event-new").value.trim();
+    if (!typed) return alert("Entre le nom du nouvel événement.");
+    evName = allEvents().find(n => n.toLowerCase() === typed.toLowerCase()) || typed; // évite les doublons de casse
+  }
+  if (!evName) return alert("Choisis un événement ou crée-en un nouveau.");
   if (!file && !existing) return alert("Ajoute une photo ou un PDF du reçu.");
   if (file && file.type === "application/pdf" && file.size > 4 * 1024 * 1024) return alert("Ce PDF dépasse 4 Mo. Réduis-le ou prends-le en photo.");
+
   const btn = $("submit-btn"); btn.disabled = true; btn.textContent = "Enregistrement en cours…";
   const rec = {
-    id: existing?.id || crypto.randomUUID(), date: $("exp-date").value,
-    projectNumber: $("exp-proj-num").value.trim(), projectName: $("exp-proj-name").value.trim(), clientName: $("exp-client").value.trim(),
-    event: $("exp-event").value.trim(), type: $("exp-type").value, supplier: $("exp-supplier").value.trim(), invoiceNumber: $("exp-invoice").value.trim(),
-    paymentMethod: $("exp-payment").value, subtotal: num($("exp-subtotal").value), tps: num($("exp-tps").value), tvq: num($("exp-tvq").value),
+    id: existing?.id || crypto.randomUUID(), date: $("exp-date").value, event: evName, type: $("exp-type").value,
+    supplier: $("exp-supplier").value.trim(), subtotal: num($("exp-subtotal").value), tps: num($("exp-tps").value), tvq: num($("exp-tvq").value),
     otherTax: num($("exp-other").value), total: num($("exp-amount").value), billable: $("exp-billable").checked,
     photoId: existing?.photoId, photoUrl: existing?.photoUrl, isPdf: existing?.isPdf
   };
-  const backup = expenses.slice(); let uploaded = null;
+  const backup = expenses.slice(), backupEvents = events.slice(); let uploaded = null;
   try {
     if (file) {
       const pdf = file.type === "application/pdf", body = pdf ? file : await compressImage(file);
       const base = (rec.date + "_" + rec.supplier + "_" + rec.total).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\-]+/g, "_").slice(0, 60);
-      uploaded = await uploadReceipt(body, base + (pdf ? ".pdf" : ".jpg"), rec.date);
+      uploaded = await uploadReceipt(body, base + (pdf ? ".pdf" : ".jpg"), evName);
       Object.assign(rec, uploaded, { isPdf: pdf });
+    } else if (existing && existing.event !== evName && existing.photoId) {
+      try { const m = await moveReceipt(existing.photoId, evName); rec.photoUrl = m.webUrl || rec.photoUrl; }
+      catch (e) { alert("Le reçu n'a pas pu être déplacé dans le dossier du nouvel événement. Il reste dans l'ancien dossier."); }
     }
+    if (!events.includes(evName)) events.push(evName);
     expenses = existing ? expenses.map(x => x.id === rec.id ? rec : x) : [rec, ...expenses];
     await saveData();
     if (file && existing) deleteReceipt(existing.photoId);
-    resetForm(); rebuildProjectFilter(); render();
+    resetForm(evName); rebuildEventFilter(); render();
   } catch (e) {
-    expenses = backup; if (uploaded) deleteReceipt(uploaded.photoId);
+    expenses = backup; events = backupEvents; if (uploaded) deleteReceipt(uploaded.photoId);
     await handleConflict(e);
   } finally { btn.disabled = false; btn.textContent = editingId ? "Enregistrer les modifications" : "Enregistrer la dépense"; }
 });
 
 // ---------- Affichage ----------
-const projKey = e => e.projectNumber || e.projectName || "";
-function rebuildProjectFilter() {
-  const sel = $("filter-project"), cur = sel.value, seen = new Map();
-  expenses.forEach(e => { if (projKey(e) && !seen.has(projKey(e))) seen.set(projKey(e), [e.projectNumber, e.projectName].filter(Boolean).join(" – ")); });
-  sel.innerHTML = `<option value="">Tous les projets</option>` + [...seen].map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
-  sel.value = seen.has(cur) ? cur : "";
-}
 const getFiltered = () => {
-  const m = $("filter-month").value, p = $("filter-project").value;
-  return expenses.filter(e => (!m || (e.date || "").startsWith(m)) && (!p || projKey(e) === p)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const m = $("filter-month").value, p = $("filter-event").value;
+  return expenses.filter(e => (!m || (e.date || "").startsWith(m)) && (!p || e.event === p)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 };
 function render() {
   const data = getFiltered(), tb = $("expenses-table-body");
   tb.innerHTML = data.length ? data.map(e => `<tr class="hover:bg-slate-50/80">
     <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
-    <td class="p-3"><div class="font-medium text-slate-900">${esc(e.projectName || "-")}</div><div class="text-xs text-slate-400">${esc(e.clientName || "")}</div></td>
+    <td class="p-3 font-medium text-slate-900">${esc(e.event || "-")}</td>
     <td class="p-3 font-semibold text-slate-700">${esc(e.supplier || "-")}</td><td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
     <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
     <td class="p-3"><a href="${esc(safeUrl(e.photoUrl))}" target="_blank" rel="noopener" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</a></td>
@@ -288,8 +317,8 @@ function render() {
   $("kpi-label").textContent = $("filter-month").value ? "Total du mois" : "Total des dépenses";
   $("kpi-total").textContent = fmt(sum("total")); $("kpi-tps").textContent = fmt(sum("tps")); $("kpi-tvq").textContent = fmt(sum("tvq")); $("kpi-count").textContent = data.length;
 }
-$("filter-month").addEventListener("change", render); $("filter-project").addEventListener("change", render);
-$("filter-reset").addEventListener("click", () => { $("filter-month").value = ""; $("filter-project").value = ""; render(); });
+$("filter-month").addEventListener("change", render); $("filter-event").addEventListener("change", render);
+$("filter-reset").addEventListener("click", () => { $("filter-month").value = ""; $("filter-event").value = ""; render(); });
 $("expenses-table-body").addEventListener("click", async ev => {
   const ed = ev.target.closest("[data-edit]"), del = ev.target.closest("[data-del]");
   if (ed) return startEdit(ed.dataset.edit);
@@ -299,7 +328,7 @@ $("expenses-table-body").addEventListener("click", async ev => {
   const backup = expenses.slice();
   try {
     expenses = expenses.filter(x => x.id !== e.id); await saveData(); deleteReceipt(e.photoId);
-    if (editingId === e.id) resetForm(); rebuildProjectFilter(); render();
+    if (editingId === e.id) resetForm(); rebuildEventFilter(); render();
   } catch (err) { expenses = backup; await handleConflict(err); }
 });
 
@@ -307,18 +336,19 @@ $("expenses-table-body").addEventListener("click", async ev => {
 $("export-btn").addEventListener("click", () => {
   const data = getFiltered().reverse();
   if (!data.length) return alert("Aucune donnée à exporter.");
-  const head = ["Date","No projet","Nom projet","Client","Fournisseur","Événement / Mandat","Type de facture","No facture","Paiement","Facturable","Sous-total ($)","TPS ($)","TVQ ($)","TVH / autres ($)","Total ($)","Reçu"];
-  const rows = data.map(e => [e.date, e.projectNumber || "", e.projectName || "", e.clientName || "", e.supplier || "", e.event || "", e.type || "", e.invoiceNumber || "", e.paymentMethod || "", e.billable ? "Oui" : "Non", e.subtotal || 0, e.tps || 0, e.tvq || 0, e.otherTax || 0, e.total || 0, e.photoUrl ? "Voir le reçu" : ""]);
+  const head = ["Date","Événement","Type de dépense","Fournisseur","Facturable","Sous-total ($)","TPS ($)","TVQ ($)","TVH / autres ($)","Total ($)","Reçu"];
+  const rows = data.map(e => [e.date, e.event || "", e.type || "", e.supplier || "", e.billable ? "Oui" : "Non", e.subtotal || 0, e.tps || 0, e.tvq || 0, e.otherTax || 0, e.total || 0, e.photoUrl ? "Voir le reçu" : ""]);
   const tot = i => r2(rows.reduce((s, r) => s + r[i], 0));
-  rows.push(["TOTAL","","","","","","","","","", tot(10), tot(11), tot(12), tot(13), tot(14), ""]);
+  rows.push(["TOTAL","","","","", tot(5), tot(6), tot(7), tot(8), tot(9), ""]);
   const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
-  ws["!cols"] = [12,10,22,28,22,26,18,14,18,10,14,12,12,14,14,14].map(w => ({ wch: w }));
+  ws["!cols"] = [12,28,22,22,10,14,12,12,14,14,14].map(w => ({ wch: w }));
   rows.forEach((_, i) => {
-    for (let c = 10; c <= 14; c++) { const cell = ws[XLSX.utils.encode_cell({ r: i + 1, c })]; if (cell) cell.z = '#,##0.00 "$"'; }
-    const l = ws[XLSX.utils.encode_cell({ r: i + 1, c: 15 })]; if (l && data[i]?.photoUrl) l.l = { Target: data[i].photoUrl };
+    for (let c = 5; c <= 9; c++) { const cell = ws[XLSX.utils.encode_cell({ r: i + 1, c })]; if (cell) cell.z = '#,##0.00 "$"'; }
+    const l = ws[XLSX.utils.encode_cell({ r: i + 1, c: 10 })]; if (l && data[i]?.photoUrl) l.l = { Target: data[i].photoUrl };
   });
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Dépenses");
-  const m = $("filter-month").value; XLSX.writeFile(wb, `Rapport_Depenses${m ? "_" + m : ""}.xlsx`);
+  const m = $("filter-month").value, p = $("filter-event").value;
+  XLSX.writeFile(wb, `Rapport_Depenses${p ? "_" + folderName(p) : ""}${m ? "_" + m : ""}.xlsx`);
 });
 
 calculateTaxes();
