@@ -1,142 +1,105 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Suivi des Dépenses Professionnelles - ER_AP</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<title>Suivi des Dépenses Professionnelles</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js" crossorigin="anonymous"></script>
+<style>
+.lbl{display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.25rem}
+.inp{width:100%;padding:.625rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem;outline:none;background:#fff}
+.inp:focus{box-shadow:0 0 0 2px #3b82f6}.inp[readonly]{background:#f1f5f9}
+.card{background:#fff;padding:1.5rem;border-radius:1rem;border:1px solid #f1f5f9;box-shadow:0 1px 2px #0000000d}
+</style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen font-sans pb-12">
 
-<!-- Connexion (aucun courriel pré-rempli : le navigateur peut le mémoriser) -->
 <div id="auth-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <form id="login-form" class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-4">
-    <div class="w-14 h-14 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center text-2xl shadow-lg"><i class="fa-solid fa-lock"></i></div>
+  <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-4">
+    <div class="w-14 h-14 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center text-2xl"><i class="fa-solid fa-lock"></i></div>
     <h1 class="font-bold text-xl text-slate-900">Connexion requise</h1>
-    <p class="text-sm text-slate-500">Accès sécurisé pour la gestion de vos dépenses.</p>
-    <input type="email" id="login-email" name="username" autocomplete="username" placeholder="Courriel" required class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-    <input type="password" id="login-password" name="password" autocomplete="current-password" placeholder="Mot de passe" required class="w-full p-3 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition">Se connecter</button>
+    <p class="text-sm text-slate-500">Connecte-toi avec ton compte Microsoft. Tes reçus et tes données sont enregistrés dans ton OneDrive.</p>
+    <button id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition"><i class="fa-brands fa-microsoft mr-2"></i>Se connecter avec Microsoft</button>
     <p id="auth-error" class="text-red-500 text-xs"></p>
-  </form>
+  </div>
 </div>
 
 <div id="app-content" class="hidden max-w-6xl mx-auto p-4 md:p-6 space-y-6">
-  <header class="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-    <h1 class="font-bold text-lg text-slate-800"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des dépenses professionnelles</h1>
-    <button id="logout-btn" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button>
+  <header class="card !p-4 flex justify-between items-center gap-2">
+    <h1 class="font-bold text-lg"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des dépenses professionnelles</h1>
+    <div class="flex items-center gap-3"><span id="user-name" class="text-xs text-slate-400 hidden md:inline"></span>
+    <button id="logout-btn" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button></div>
   </header>
 
-  <!-- Filtres -->
-  <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-wrap items-end gap-3">
-    <div>
-      <label class="block text-xs font-semibold text-slate-500 mb-1">Mois</label>
-      <input type="month" id="filter-month" class="p-2 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500">
-    </div>
-    <div>
-      <label class="block text-xs font-semibold text-slate-500 mb-1">Projet</label>
-      <select id="filter-project" class="p-2 border rounded-xl text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"><option value="">Tous les projets</option></select>
-    </div>
-    <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl transition">Tout afficher</button>
+  <div class="card !p-4 flex flex-wrap items-end gap-3">
+    <div><label class="lbl">Mois</label><input type="month" id="filter-month" class="inp"></div>
+    <div><label class="lbl">Projet</label><select id="filter-project" class="inp"><option value="">Tous les projets</option></select></div>
+    <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl">Tout afficher</button>
   </div>
 
-  <!-- KPI -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span id="kpi-label" class="text-xs font-semibold text-slate-400">Total des dépenses</span><div id="kpi-total" class="text-xl font-extrabold text-slate-800 mt-1">0,00 $</div></div>
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">TPS récupérable</span><div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div></div>
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">TVQ récupérable</span><div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div></div>
-    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100"><span class="text-xs font-semibold text-slate-400">Nombre de reçus</span><div id="kpi-count" class="text-xl font-extrabold text-slate-800 mt-1">0</div></div>
+    <div class="card !p-4"><span id="kpi-label" class="text-xs font-semibold text-slate-400">Total des dépenses</span><div id="kpi-total" class="text-xl font-extrabold mt-1">0,00 $</div></div>
+    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">TPS récupérable</span><div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div></div>
+    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">TVQ récupérable</span><div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div></div>
+    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">Nombre de reçus</span><div id="kpi-count" class="text-xl font-extrabold mt-1">0</div></div>
   </div>
 
-  <!-- Formulaire -->
-  <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+  <div class="card space-y-4">
     <h2 id="form-title" class="font-bold text-slate-700 text-sm">Ajouter une dépense</h2>
     <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <div><label class="lbl">Date</label><input type="date" id="exp-date" required class="inp"></div>
-      <div><label class="lbl">Numéro de projet</label><input type="text" id="exp-proj-num" placeholder="ex: 24056" class="inp"></div>
-      <div><label class="lbl">Nom du projet</label><input type="text" id="exp-proj-name" placeholder="ex: CHUM" class="inp"></div>
-      <div><label class="lbl">Client</label><input type="text" id="exp-client" placeholder="ex: Société québécoise des infrastructures" class="inp"></div>
-      <div><label class="lbl">Événement / Mandat</label><input type="text" id="exp-event" placeholder="ex: Congrès, réunion client…" required class="inp"></div>
-      <div><label class="lbl">Type de facture</label>
-        <select id="exp-type" class="inp bg-white"><option>Restaurant</option><option>Hôtel</option><option>Parking</option><option>Taxi</option><option>Carburant</option><option>Location auto</option><option>Frais de représentation</option><option>Autre</option></select></div>
-      <div><label class="lbl">Nom du fournisseur</label><input type="text" id="exp-supplier" placeholder="ex: Hilton, Indigo…" required class="inp"></div>
-      <div><label class="lbl">Numéro de facture</label><input type="text" id="exp-invoice" placeholder="ex: F-12345" class="inp"></div>
-      <div><label class="lbl">Mode de paiement</label>
-        <select id="exp-payment" class="inp bg-white"><option>Carte personnelle</option><option>Carte corporative</option><option>Comptant</option><option>Autre</option></select></div>
-      <div><label class="lbl">Mode de taxes</label>
-        <select id="tax-mode" class="inp bg-white">
-          <option value="included">Taxes incluses (QC)</option>
-          <option value="excluded">Sans taxes récupérables / hors QC</option>
-          <option value="manual">Saisie manuelle des taxes (TVH, etc.)</option>
-        </select></div>
-      <div><label class="lbl">Montant total ($)</label><input type="number" step="0.01" id="exp-amount" placeholder="0.00" required class="inp"></div>
-      <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp bg-slate-100" readonly></div>
-      <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp bg-slate-100" readonly></div>
-      <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp bg-slate-100" readonly></div>
-      <div><label class="lbl">TVH / autres taxes</label><input type="number" step="0.01" id="exp-other" class="inp bg-slate-100" readonly></div>
-      <div class="flex items-center">
-        <label class="flex items-center cursor-pointer"><input type="checkbox" id="exp-billable" checked class="w-4 h-4 text-blue-600 rounded"><span class="ml-2 text-xs font-medium text-slate-600">Facturable au client</span></label>
-      </div>
+      <div><label class="lbl">Numéro de projet</label><input id="exp-proj-num" placeholder="ex: 24056" class="inp"></div>
+      <div><label class="lbl">Nom du projet</label><input id="exp-proj-name" placeholder="ex: CHUM" class="inp"></div>
+      <div><label class="lbl">Client</label><input id="exp-client" class="inp"></div>
+      <div><label class="lbl">Événement / Mandat</label><input id="exp-event" required class="inp"></div>
+      <div><label class="lbl">Type de facture</label><select id="exp-type" class="inp"><option>Restaurant</option><option>Hôtel</option><option>Parking</option><option>Taxi</option><option>Carburant</option><option>Location auto</option><option>Frais de représentation</option><option>Autre</option></select></div>
+      <div><label class="lbl">Fournisseur</label><input id="exp-supplier" required placeholder="ex: Hilton, Indigo…" class="inp"></div>
+      <div><label class="lbl">Numéro de facture</label><input id="exp-invoice" class="inp"></div>
+      <div><label class="lbl">Mode de paiement</label><select id="exp-payment" class="inp"><option>Carte personnelle</option><option>Carte corporative</option><option>Comptant</option><option>Autre</option></select></div>
+      <div><label class="lbl">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxes récupérables / hors QC</option><option value="manual">Saisie manuelle (TVH, etc.)</option></select></div>
+      <div><label class="lbl">Montant total ($)</label><input type="number" step="0.01" id="exp-amount" required class="inp"></div>
+      <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp" readonly></div>
+      <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp" readonly></div>
+      <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp" readonly></div>
+      <div><label class="lbl">TVH / autres taxes</label><input type="number" step="0.01" id="exp-other" class="inp" readonly></div>
+      <div class="flex items-center"><label class="flex items-center cursor-pointer"><input type="checkbox" id="exp-billable" checked class="w-4 h-4 rounded"><span class="ml-2 text-xs font-medium text-slate-600">Facturable au client</span></label></div>
       <div class="md:col-span-3 space-y-2">
-        <label class="lbl">Photo ou PDF du reçu <span id="photo-hint" class="font-normal text-slate-400"></span></label>
-        <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
-        <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-40 rounded-xl border p-1 shadow-sm mt-2">
+        <label class="lbl">Photo ou PDF du reçu (4 Mo max pour un PDF) <span id="photo-hint" class="font-normal text-slate-400"></span></label>
+        <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
+        <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-40 rounded-xl border p-1 mt-2">
       </div>
       <div class="md:col-span-3 flex justify-end gap-2">
-        <button type="button" id="cancel-btn" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-semibold transition">Annuler la modification</button>
-        <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md transition">Enregistrer la dépense</button>
+        <button type="button" id="cancel-btn" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-semibold">Annuler la modification</button>
+        <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md">Enregistrer la dépense</button>
       </div>
     </form>
   </div>
 
-  <!-- Historique -->
-  <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 space-y-4">
+  <div class="card space-y-4">
     <div class="flex flex-col md:flex-row justify-between items-center gap-2">
       <h2 class="font-bold text-slate-700 text-sm">Historique des dépenses</h2>
-      <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-sm transition flex items-center gap-2"><i class="fa-solid fa-file-excel"></i>Exporter la sélection (.xlsx)</button>
+      <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-2"><i class="fa-solid fa-file-excel"></i>Exporter la sélection (.xlsx)</button>
     </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-left border-collapse text-sm">
-        <thead><tr class="bg-slate-50 text-slate-500 text-xs">
-          <th class="p-3 rounded-l-xl">Date</th><th class="p-3">Projet / Client</th><th class="p-3">Fournisseur</th><th class="p-3">Type</th>
-          <th class="p-3">Total</th><th class="p-3">TPS</th><th class="p-3">TVQ</th><th class="p-3">Reçu</th><th class="p-3 rounded-r-xl">Actions</th>
-        </tr></thead>
-        <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
-      </table>
-    </div>
+    <div class="overflow-x-auto"><table class="w-full text-left text-sm">
+      <thead><tr class="bg-slate-50 text-slate-500 text-xs"><th class="p-3">Date</th><th class="p-3">Projet / Client</th><th class="p-3">Fournisseur</th><th class="p-3">Type</th><th class="p-3">Total</th><th class="p-3">TPS</th><th class="p-3">TVQ</th><th class="p-3">Reçu</th><th class="p-3">Actions</th></tr></thead>
+      <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
+    </table></div>
   </div>
 </div>
 
-<style>
-  .lbl{display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.25rem}
-  .inp{width:100%;padding:.625rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem;outline:none}
-  .inp:focus{box-shadow:0 0 0 2px #3b82f6}
-  .inp:not([readonly]){background-color:#fff}
-</style>
-
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyD8b4Viivsau6HzgHDHenQGRgP2_bIV0qY",
-  authDomain: "erap-66a28.firebaseapp.com",
-  projectId: "erap-66a28",
-  storageBucket: "erap-66a28.firebasestorage.app",
-  messagingSenderId: "131124147434",
-  appId: "1:131124147434:web:c89bc9541ae0919cac1393"
-};
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth(), db = firebase.firestore(), storage = firebase.storage();
+// ====== À MODIFIER : l'« Application (client) ID » obtenu dans Azure ======
+const CLIENT_ID = "COLLE-ICI-TON-ID-CLIENT";
+// "consumers" = comptes Microsoft personnels (Outlook, Hotmail). Pour aussi accepter les comptes de travail : "common".
+const AUTHORITY = "https://login.microsoftonline.com/consumers";
+// =========================================================================
 
+const SCOPES = ["Files.ReadWrite.AppFolder"]; // accès limité au dossier de l'app dans OneDrive
+const G = "https://graph.microsoft.com/v1.0/me/drive";
 const $ = id => document.getElementById(id);
-let expensesCache = [];
-let editingId = null;
-
-// ---------- Utilitaires ----------
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = v => parseFloat(v) || 0;
@@ -144,280 +107,222 @@ const fmt = n => Number(n || 0).toLocaleString("fr-CA", { style: "currency", cur
 const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const safeUrl = u => /^https:\/\//.test(u || "") ? u : "#";
 
-// ---------- Authentification ----------
-auth.onAuthStateChanged(user => {
-  $("auth-modal").classList.toggle("hidden", !!user);
-  $("app-content").classList.toggle("hidden", !user);
-  if (user) { $("exp-date").value = todayStr(); $("filter-month").value = todayStr().slice(0, 7); loadExpenses(); }
+let expenses = [], etag = null, editingId = null;
+const app = new msal.PublicClientApplication({
+  auth: { clientId: CLIENT_ID, authority: AUTHORITY, redirectUri: location.origin + location.pathname },
+  cache: { cacheLocation: "localStorage" }
 });
-$("login-form").addEventListener("submit", e => {
-  e.preventDefault();
-  $("auth-error").textContent = "";
-  auth.signInWithEmailAndPassword($("login-email").value.trim(), $("login-password").value)
-    .catch(() => { $("auth-error").textContent = "Courriel ou mot de passe invalide."; });
+
+// ---------- Connexion Microsoft ----------
+async function init() {
+  try {
+    await app.initialize?.();
+    const res = await app.handleRedirectPromise();
+    if (res?.account) app.setActiveAccount(res.account);
+    const acc = app.getActiveAccount() || app.getAllAccounts()[0];
+    if (!acc) return;
+    app.setActiveAccount(acc);
+    $("auth-modal").classList.add("hidden");
+    $("app-content").classList.remove("hidden");
+    $("user-name").textContent = acc.username || "";
+    $("exp-date").value = todayStr(); $("filter-month").value = todayStr().slice(0, 7);
+    await refresh();
+  } catch (e) { $("auth-error").textContent = "Erreur de connexion : " + e.message; }
+}
+$("login-btn").addEventListener("click", () => {
+  if (CLIENT_ID.startsWith("COLLE")) { $("auth-error").textContent = "Ajoute d'abord ton ID client Azure dans le fichier."; return; }
+  app.loginRedirect({ scopes: SCOPES });
 });
-$("logout-btn").addEventListener("click", () => auth.signOut());
+$("logout-btn").addEventListener("click", () => app.logoutRedirect({ account: app.getActiveAccount() }));
+
+async function token() {
+  const account = app.getActiveAccount();
+  try { return (await app.acquireTokenSilent({ scopes: SCOPES, account })).accessToken; }
+  catch (e) { await app.acquireTokenRedirect({ scopes: SCOPES, account }); throw e; }
+}
+async function graph(path, opt = {}) {
+  const r = await fetch(G + path, { ...opt, headers: { Authorization: "Bearer " + await token(), ...(opt.headers || {}) } });
+  if (!r.ok) { const e = new Error("OneDrive a répondu " + r.status); e.status = r.status; throw e; }
+  return r;
+}
+
+// ---------- Données (un fichier depenses.json dans OneDrive) ----------
+async function loadData() {
+  try {
+    const meta = await (await graph("/special/approot:/depenses.json")).json();
+    etag = meta.eTag;
+    expenses = (await (await fetch(meta["@microsoft.graph.downloadUrl"])).json()).expenses || [];
+  } catch (e) { if (e.status === 404) { etag = null; expenses = []; } else throw e; }
+}
+async function saveData() {
+  const h = { "Content-Type": "application/json" };
+  if (etag) h["If-Match"] = etag; // refuse d'écraser une version plus récente
+  const r = await graph("/special/approot:/depenses.json:/content", { method: "PUT", headers: h, body: JSON.stringify({ version: 1, expenses }) });
+  etag = (await r.json()).eTag;
+}
+async function uploadReceipt(body, name, date) {
+  const r = await graph(`/special/approot:/Recus/${date.slice(0, 7)}/${encodeURIComponent(name)}:/content?@microsoft.graph.conflictBehavior=rename`,
+    { method: "PUT", headers: { "Content-Type": body.type || "application/octet-stream" }, body });
+  const j = await r.json();
+  return { photoId: j.id, photoUrl: j.webUrl };
+}
+const deleteReceipt = id => id ? graph("/items/" + id, { method: "DELETE" }).catch(() => {}) : Promise.resolve();
+async function refresh() {
+  $("expenses-table-body").innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Chargement…</td></tr>`;
+  try { await loadData(); rebuildProjectFilter(); render(); }
+  catch (e) { $("expenses-table-body").innerHTML = `<tr><td colspan="9" class="p-8 text-center text-red-500">Impossible de charger les dépenses : ${esc(e.message)}</td></tr>`; }
+}
 
 // ---------- Taxes ----------
-function setTaxFieldsEditable(manual) {
-  ["exp-tps", "exp-tvq", "exp-other"].forEach(id => { $(id).readOnly = !manual; $(id).classList.toggle("bg-slate-100", !manual); });
-}
 function calculateTaxes() {
   const amount = num($("exp-amount").value), mode = $("tax-mode").value;
-  setTaxFieldsEditable(mode === "manual");
-  if (mode === "manual") {
-    $("exp-subtotal").value = r2(amount - num($("exp-tps").value) - num($("exp-tvq").value) - num($("exp-other").value)).toFixed(2);
-    return;
-  }
+  ["exp-tps", "exp-tvq", "exp-other"].forEach(id => $(id).readOnly = mode !== "manual");
+  if (mode === "manual") { $("exp-subtotal").value = r2(amount - num($("exp-tps").value) - num($("exp-tvq").value) - num($("exp-other").value)).toFixed(2); return; }
   let sub = amount, tps = 0, tvq = 0;
-  if (mode === "included") {
-    sub = r2(amount / 1.14975);
-    tps = r2(sub * 0.05);
-    tvq = r2(amount - sub - tps); // par différence : la somme tombe toujours juste
-  }
-  $("exp-subtotal").value = sub.toFixed(2);
-  $("exp-tps").value = tps.toFixed(2);
-  $("exp-tvq").value = tvq.toFixed(2);
-  $("exp-other").value = "0.00";
+  if (mode === "included") { sub = r2(amount / 1.14975); tps = r2(sub * 0.05); tvq = r2(amount - sub - tps); }
+  $("exp-subtotal").value = sub.toFixed(2); $("exp-tps").value = tps.toFixed(2); $("exp-tvq").value = tvq.toFixed(2); $("exp-other").value = "0.00";
 }
 ["exp-amount", "exp-tps", "exp-tvq", "exp-other"].forEach(id => $(id).addEventListener("input", calculateTaxes));
-$("tax-mode").addEventListener("change", () => {
-  if ($("tax-mode").value === "manual") { $("exp-tps").value = $("exp-tvq").value = $("exp-other").value = "0.00"; }
-  calculateTaxes();
-});
+$("tax-mode").addEventListener("change", () => { if ($("tax-mode").value === "manual") $("exp-tps").value = $("exp-tvq").value = $("exp-other").value = "0.00"; calculateTaxes(); });
 
 // ---------- Fichier du reçu ----------
 $("exp-photo").addEventListener("change", e => {
-  const file = e.target.files[0], preview = $("receipt-preview");
-  if (!file || !file.type.startsWith("image/")) { preview.classList.add("hidden"); return; }
-  preview.src = URL.createObjectURL(file);
-  preview.classList.remove("hidden");
+  const f = e.target.files[0], p = $("receipt-preview");
+  if (!f || !f.type.startsWith("image/")) { p.classList.add("hidden"); return; }
+  p.src = URL.createObjectURL(f); p.classList.remove("hidden");
 });
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 1500;
-      let w = img.width, h = img.height;
-      if (w > MAX) { h *= MAX / w; w = MAX; }
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      canvas.toBlob(b => b ? resolve(b) : reject(new Error("Compression impossible")), "image/jpeg", 0.75);
+      let w = img.width, h = img.height; if (w > 1500) { h *= 1500 / w; w = 1500; }
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      c.toBlob(b => b ? resolve(b) : reject(new Error("Compression impossible")), "image/jpeg", 0.75);
     };
     img.onerror = () => reject(new Error("Image illisible"));
     img.src = URL.createObjectURL(file);
   });
 }
 
-// ---------- Formulaire : ajout / modification ----------
+// ---------- Formulaire ----------
 function resetForm() {
-  editingId = null;
-  $("expense-form").reset();
-  $("exp-date").value = todayStr();
-  $("receipt-preview").classList.add("hidden");
-  $("form-title").textContent = "Ajouter une dépense";
-  $("submit-btn").textContent = "Enregistrer la dépense";
-  $("cancel-btn").classList.add("hidden");
-  $("photo-hint").textContent = "";
+  editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr();
+  $("receipt-preview").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
+  $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
   calculateTaxes();
 }
 $("cancel-btn").addEventListener("click", resetForm);
-
 function startEdit(id) {
-  const e = expensesCache.find(x => x.id === id);
-  if (!e) return;
+  const e = expenses.find(x => x.id === id); if (!e) return;
   editingId = id;
-  $("exp-date").value = e.date || "";
-  $("exp-proj-num").value = e.projectNumber || "";
-  $("exp-proj-name").value = e.projectName || "";
-  $("exp-client").value = e.clientName || "";
-  $("exp-event").value = e.event || "";
-  $("exp-type").value = e.type || "Autre";
-  $("exp-supplier").value = e.supplier || "";
-  $("exp-invoice").value = e.invoiceNumber || "";
-  $("exp-payment").value = e.paymentMethod || "Carte personnelle";
-  $("tax-mode").value = "manual"; // conserve exactement les montants enregistrés
-  $("exp-amount").value = e.total;
-  $("exp-tps").value = (e.tps ?? 0).toFixed(2);
-  $("exp-tvq").value = (e.tvq ?? 0).toFixed(2);
-  $("exp-other").value = (e.otherTax ?? 0).toFixed(2);
-  $("exp-billable").checked = !!e.billable;
-  $("exp-photo").value = "";
-  $("receipt-preview").classList.add("hidden");
+  $("exp-date").value = e.date || ""; $("exp-proj-num").value = e.projectNumber || ""; $("exp-proj-name").value = e.projectName || "";
+  $("exp-client").value = e.clientName || ""; $("exp-event").value = e.event || ""; $("exp-type").value = e.type || "Autre";
+  $("exp-supplier").value = e.supplier || ""; $("exp-invoice").value = e.invoiceNumber || ""; $("exp-payment").value = e.paymentMethod || "Carte personnelle";
+  $("tax-mode").value = "manual"; $("exp-amount").value = e.total;
+  $("exp-tps").value = (e.tps ?? 0).toFixed(2); $("exp-tvq").value = (e.tvq ?? 0).toFixed(2); $("exp-other").value = (e.otherTax ?? 0).toFixed(2);
+  $("exp-billable").checked = !!e.billable; $("exp-photo").value = ""; $("receipt-preview").classList.add("hidden");
   $("photo-hint").textContent = "(laisser vide pour garder le reçu actuel)";
-  $("form-title").textContent = "Modifier la dépense";
-  $("submit-btn").textContent = "Enregistrer les modifications";
-  $("cancel-btn").classList.remove("hidden");
-  calculateTaxes();
-  $("expense-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("form-title").textContent = "Modifier la dépense"; $("submit-btn").textContent = "Enregistrer les modifications"; $("cancel-btn").classList.remove("hidden");
+  calculateTaxes(); $("expense-form").scrollIntoView({ behavior: "smooth" });
 }
-
-$("expense-form").addEventListener("submit", async e => {
-  e.preventDefault();
-  const btn = $("submit-btn"), label = btn.textContent;
-  const file = $("exp-photo").files[0];
-  const existing = editingId ? expensesCache.find(x => x.id === editingId) : null;
-
-  if (!file && !existing) { alert("Ajoutez une photo ou un PDF du reçu."); return; }
-  btn.disabled = true; btn.textContent = "Enregistrement en cours…";
-
-  const userId = auth.currentUser.uid;
-  const data = {
-    ownerId: userId,
-    date: $("exp-date").value,
-    projectNumber: $("exp-proj-num").value.trim(),
-    projectName: $("exp-proj-name").value.trim(),
-    clientName: $("exp-client").value.trim(),
-    event: $("exp-event").value.trim(),
-    type: $("exp-type").value,
-    supplier: $("exp-supplier").value.trim(),
-    invoiceNumber: $("exp-invoice").value.trim(),
-    paymentMethod: $("exp-payment").value,
-    taxMode: $("tax-mode").value,
-    subtotal: num($("exp-subtotal").value),
-    tps: num($("exp-tps").value),
-    tvq: num($("exp-tvq").value),
-    otherTax: num($("exp-other").value),
-    total: num($("exp-amount").value),
-    billable: $("exp-billable").checked
+async function handleConflict(e) {
+  if (e.status === 412) { alert("Les données ont été modifiées ailleurs. Elles sont rechargées : refais ta modification."); await refresh(); }
+  else alert("Erreur : " + e.message);
+}
+$("expense-form").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const file = $("exp-photo").files[0], existing = editingId ? expenses.find(x => x.id === editingId) : null;
+  if (!file && !existing) return alert("Ajoute une photo ou un PDF du reçu.");
+  if (file && file.type === "application/pdf" && file.size > 4 * 1024 * 1024) return alert("Ce PDF dépasse 4 Mo. Réduis-le ou prends-le en photo.");
+  const btn = $("submit-btn"); btn.disabled = true; btn.textContent = "Enregistrement en cours…";
+  const rec = {
+    id: existing?.id || crypto.randomUUID(), date: $("exp-date").value,
+    projectNumber: $("exp-proj-num").value.trim(), projectName: $("exp-proj-name").value.trim(), clientName: $("exp-client").value.trim(),
+    event: $("exp-event").value.trim(), type: $("exp-type").value, supplier: $("exp-supplier").value.trim(), invoiceNumber: $("exp-invoice").value.trim(),
+    paymentMethod: $("exp-payment").value, subtotal: num($("exp-subtotal").value), tps: num($("exp-tps").value), tvq: num($("exp-tvq").value),
+    otherTax: num($("exp-other").value), total: num($("exp-amount").value), billable: $("exp-billable").checked,
+    photoId: existing?.photoId, photoUrl: existing?.photoUrl, isPdf: existing?.isPdf
   };
-
+  const backup = expenses.slice(); let uploaded = null;
   try {
-    let oldPath = null;
     if (file) {
-      const isPdf = file.type === "application/pdf";
-      const body = isPdf ? file : await compressImage(file);
-      const safeName = file.name.replace(/[^\w.\-]/g, "_");
-      const path = `receipts/${userId}/${Date.now()}_${safeName}`;
-      const snap = await storage.ref(path).put(body);
-      data.photoUrl = await snap.ref.getDownloadURL();
-      data.photoPath = path;
-      data.isPdf = isPdf;
-      if (existing) oldPath = existing.photoPath;
+      const pdf = file.type === "application/pdf", body = pdf ? file : await compressImage(file);
+      const base = (rec.date + "_" + rec.supplier + "_" + rec.total).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\-]+/g, "_").slice(0, 60);
+      uploaded = await uploadReceipt(body, base + (pdf ? ".pdf" : ".jpg"), rec.date);
+      Object.assign(rec, uploaded, { isPdf: pdf });
     }
-    if (existing) {
-      await db.collection("expenses").doc(editingId).update(data);
-      if (oldPath) storage.ref(oldPath).delete().catch(() => {});
-    } else {
-      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-      await db.collection("expenses").add(data);
-    }
-    resetForm();
-    await loadExpenses();
-  } catch (err) {
-    alert("Erreur lors de l'enregistrement : " + err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = editingId ? "Enregistrer les modifications" : "Enregistrer la dépense";
-    if (!editingId) btn.textContent = "Enregistrer la dépense";
-  }
+    expenses = existing ? expenses.map(x => x.id === rec.id ? rec : x) : [rec, ...expenses];
+    await saveData();
+    if (file && existing) deleteReceipt(existing.photoId);
+    resetForm(); rebuildProjectFilter(); render();
+  } catch (e) {
+    expenses = backup; if (uploaded) deleteReceipt(uploaded.photoId);
+    await handleConflict(e);
+  } finally { btn.disabled = false; btn.textContent = editingId ? "Enregistrer les modifications" : "Enregistrer la dépense"; }
 });
 
-// ---------- Chargement, filtres, affichage ----------
-async function loadExpenses() {
-  const tbody = $("expenses-table-body");
-  tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Chargement…</td></tr>`;
-  try {
-    // Pas d'orderBy côté serveur : aucun index composite à créer. Le tri se fait ici.
-    const snap = await db.collection("expenses").where("ownerId", "==", auth.currentUser.uid).get();
-    expensesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    rebuildProjectFilter();
-    render();
-  } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-red-500">Impossible de charger les dépenses : ${esc(err.message)}</td></tr>`;
-  }
-}
+// ---------- Affichage ----------
 const projKey = e => e.projectNumber || e.projectName || "";
-const projLabel = e => [e.projectNumber, e.projectName].filter(Boolean).join(" – ");
-
 function rebuildProjectFilter() {
-  const sel = $("filter-project"), current = sel.value, seen = new Map();
-  expensesCache.forEach(e => { if (projKey(e) && !seen.has(projKey(e))) seen.set(projKey(e), projLabel(e)); });
-  sel.innerHTML = `<option value="">Tous les projets</option>` +
-    [...seen].map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
-  sel.value = seen.has(current) ? current : "";
+  const sel = $("filter-project"), cur = sel.value, seen = new Map();
+  expenses.forEach(e => { if (projKey(e) && !seen.has(projKey(e))) seen.set(projKey(e), [e.projectNumber, e.projectName].filter(Boolean).join(" – ")); });
+  sel.innerHTML = `<option value="">Tous les projets</option>` + [...seen].map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("");
+  sel.value = seen.has(cur) ? cur : "";
 }
-function getFiltered() {
+const getFiltered = () => {
   const m = $("filter-month").value, p = $("filter-project").value;
-  return expensesCache.filter(e => (!m || (e.date || "").startsWith(m)) && (!p || projKey(e) === p));
-}
+  return expenses.filter(e => (!m || (e.date || "").startsWith(m)) && (!p || projKey(e) === p)).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+};
 function render() {
-  const data = getFiltered(), tbody = $("expenses-table-body");
-  if (!data.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="text-center p-8 text-slate-400">Aucune dépense pour cette sélection</td></tr>`;
-  } else {
-    tbody.innerHTML = data.map(e => `
-      <tr class="hover:bg-slate-50/80">
-        <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
-        <td class="p-3"><div class="font-medium text-slate-900">${esc(e.projectName || "-")}</div><div class="text-xs text-slate-400">${esc(e.clientName || "")}</div></td>
-        <td class="p-3 font-semibold text-slate-700">${esc(e.supplier || "-")}</td>
-        <td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
-        <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}</td>
-        <td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td>
-        <td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
-        <td class="p-3"><a href="${esc(safeUrl(e.photoUrl))}" target="_blank" rel="noopener" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</a></td>
-        <td class="p-3 whitespace-nowrap">
-          <button data-edit="${esc(e.id)}" class="text-blue-500 hover:text-blue-700 mr-3" title="Modifier"><i class="fa-solid fa-pen"></i></button>
-          <button data-del="${esc(e.id)}" class="text-red-400 hover:text-red-600" title="Supprimer"><i class="fa-solid fa-trash"></i></button>
-        </td>
-      </tr>`).join("");
-  }
-  updateKPIs(data);
-}
-function updateKPIs(data) {
+  const data = getFiltered(), tb = $("expenses-table-body");
+  tb.innerHTML = data.length ? data.map(e => `<tr class="hover:bg-slate-50/80">
+    <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
+    <td class="p-3"><div class="font-medium text-slate-900">${esc(e.projectName || "-")}</div><div class="text-xs text-slate-400">${esc(e.clientName || "")}</div></td>
+    <td class="p-3 font-semibold text-slate-700">${esc(e.supplier || "-")}</td><td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
+    <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
+    <td class="p-3"><a href="${esc(safeUrl(e.photoUrl))}" target="_blank" rel="noopener" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</a></td>
+    <td class="p-3 whitespace-nowrap"><button data-edit="${esc(e.id)}" class="text-blue-500 hover:text-blue-700 mr-3" title="Modifier"><i class="fa-solid fa-pen"></i></button><button data-del="${esc(e.id)}" class="text-red-400 hover:text-red-600" title="Supprimer"><i class="fa-solid fa-trash"></i></button></td></tr>`).join("")
+    : `<tr><td colspan="9" class="text-center p-8 text-slate-400">Aucune dépense pour cette sélection</td></tr>`;
   const sum = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
-  const m = $("filter-month").value;
-  $("kpi-label").textContent = m ? "Total du mois" : "Total des dépenses";
-  $("kpi-total").textContent = fmt(sum("total"));
-  $("kpi-tps").textContent = fmt(sum("tps"));
-  $("kpi-tvq").textContent = fmt(sum("tvq"));
-  $("kpi-count").textContent = data.length;
+  $("kpi-label").textContent = $("filter-month").value ? "Total du mois" : "Total des dépenses";
+  $("kpi-total").textContent = fmt(sum("total")); $("kpi-tps").textContent = fmt(sum("tps")); $("kpi-tvq").textContent = fmt(sum("tvq")); $("kpi-count").textContent = data.length;
 }
-$("filter-month").addEventListener("change", render);
-$("filter-project").addEventListener("change", render);
+$("filter-month").addEventListener("change", render); $("filter-project").addEventListener("change", render);
 $("filter-reset").addEventListener("click", () => { $("filter-month").value = ""; $("filter-project").value = ""; render(); });
-
 $("expenses-table-body").addEventListener("click", async ev => {
-  const editBtn = ev.target.closest("[data-edit]"), delBtn = ev.target.closest("[data-del]");
-  if (editBtn) return startEdit(editBtn.dataset.edit);
-  if (delBtn) {
-    const e = expensesCache.find(x => x.id === delBtn.dataset.del);
-    if (!e || !confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
-    try {
-      if (e.photoPath) await storage.ref(e.photoPath).delete().catch(() => {});
-      await db.collection("expenses").doc(e.id).delete();
-      if (editingId === e.id) resetForm();
-      loadExpenses();
-    } catch (err) { alert("Erreur lors de la suppression : " + err.message); }
-  }
+  const ed = ev.target.closest("[data-edit]"), del = ev.target.closest("[data-del]");
+  if (ed) return startEdit(ed.dataset.edit);
+  if (!del) return;
+  const e = expenses.find(x => x.id === del.dataset.del);
+  if (!e || !confirm("Voulez-vous vraiment supprimer cette dépense ?")) return;
+  const backup = expenses.slice();
+  try {
+    expenses = expenses.filter(x => x.id !== e.id); await saveData(); deleteReceipt(e.photoId);
+    if (editingId === e.id) resetForm(); rebuildProjectFilter(); render();
+  } catch (err) { expenses = backup; await handleConflict(err); }
 });
 
-// ---------- Export Excel (sélection filtrée) ----------
+// ---------- Export Excel ----------
 $("export-btn").addEventListener("click", () => {
-  const data = getFiltered().slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  if (!data.length) { alert("Aucune donnée à exporter."); return; }
-  const headers = ["Date","No projet","Nom projet","Client","Fournisseur","Événement / Mandat","Type de facture","No facture","Paiement","Facturable","Sous-total ($)","TPS ($)","TVQ ($)","TVH / autres ($)","Total ($)","Reçu"];
+  const data = getFiltered().reverse();
+  if (!data.length) return alert("Aucune donnée à exporter.");
+  const head = ["Date","No projet","Nom projet","Client","Fournisseur","Événement / Mandat","Type de facture","No facture","Paiement","Facturable","Sous-total ($)","TPS ($)","TVQ ($)","TVH / autres ($)","Total ($)","Reçu"];
   const rows = data.map(e => [e.date, e.projectNumber || "", e.projectName || "", e.clientName || "", e.supplier || "", e.event || "", e.type || "", e.invoiceNumber || "", e.paymentMethod || "", e.billable ? "Oui" : "Non", e.subtotal || 0, e.tps || 0, e.tvq || 0, e.otherTax || 0, e.total || 0, e.photoUrl ? "Voir le reçu" : ""]);
-  const tot = i => r2(data.reduce((s, e) => s + (rows[data.indexOf(e)][i] || 0), 0));
+  const tot = i => r2(rows.reduce((s, r) => s + r[i], 0));
   rows.push(["TOTAL","","","","","","","","","", tot(10), tot(11), tot(12), tot(13), tot(14), ""]);
-
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([head, ...rows]);
   ws["!cols"] = [12,10,22,28,22,26,18,14,18,10,14,12,12,14,14,14].map(w => ({ wch: w }));
-  ws["!freeze"] = { xSplit: 0, ySplit: 1 };
-  for (let r = 1; r <= rows.length; r++) {
-    for (let c = 10; c <= 14; c++) { const cell = ws[XLSX.utils.encode_cell({ r, c })]; if (cell) cell.z = '#,##0.00 "$"'; }
-    const link = ws[XLSX.utils.encode_cell({ r, c: 15 })], e = data[r - 1];
-    if (link && e && e.photoUrl) link.l = { Target: e.photoUrl };
-  }
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Dépenses");
-  const m = $("filter-month").value;
-  XLSX.writeFile(wb, `Rapport_Depenses${m ? "_" + m : ""}.xlsx`);
+  rows.forEach((_, i) => {
+    for (let c = 10; c <= 14; c++) { const cell = ws[XLSX.utils.encode_cell({ r: i + 1, c })]; if (cell) cell.z = '#,##0.00 "$"'; }
+    const l = ws[XLSX.utils.encode_cell({ r: i + 1, c: 15 })]; if (l && data[i]?.photoUrl) l.l = { Target: data[i].photoUrl };
+  });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Dépenses");
+  const m = $("filter-month").value; XLSX.writeFile(wb, `Rapport_Depenses${m ? "_" + m : ""}.xlsx`);
 });
 
 calculateTaxes();
+init();
 </script>
 </body>
 </html>
