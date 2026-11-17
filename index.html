@@ -72,7 +72,7 @@
       <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp" readonly></div>
       <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp" readonly></div>
       <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp" readonly></div>
-      <div class="md:col-span-3"><label class="lbl">Explication (facultatif)</label><textarea id="exp-note" rows="2" placeholder="ex: 80 % de la facture applicable, une nuit était à mes frais" class="inp"></textarea></div>
+      <div class="md:col-span-3"><label class="lbl">Explication (facultatif)</label><textarea id="exp-note" rows="2" placeholder="ex: 80 % de la facture applicable, une nuit était à mes frais." class="inp"></textarea></div>
       <div class="md:col-span-3 space-y-2">
         <label class="lbl">Photo ou PDF du reçu (4 Mo max pour un PDF) <span id="photo-hint" class="font-normal text-slate-400"></span></label>
         <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
@@ -91,11 +91,12 @@
         <h2 class="font-bold text-slate-700 text-sm w-full">Historique des dépenses</h2>
         <div><label class="lbl">Mois</label><input type="month" id="filter-month" class="inp"></div>
         <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl">Effacer les filtres</button>
+        <button id="ren-event-btn" class="hidden text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2.5 rounded-xl"><i class="fa-solid fa-pen mr-1"></i>Renommer l'événement</button>
         <button id="del-event-btn" class="hidden text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2.5 rounded-xl"></button>
       </div>
       <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 justify-center"><i class="fa-solid fa-file-excel"></i><span>Exporter la sélection (.xlsx, avec photos)</span></button>
     </div>
-    <p class="text-xs text-slate-400">Clique sur un titre de colonne pour trier. Les cases sous les titres filtrent le tableau, les totaux et l'export.</p>
+    <p class="text-xs text-slate-400">Clique sur un titre de colonne pour trier. Les cases sous les titres filtrent le tableau, les totaux et l'export. Pour renommer ou supprimer un événement, choisis-le dans le filtre de la colonne « Événement ».</p>
     <div class="overflow-x-auto"><table class="w-full text-left text-sm">
       <thead>
         <tr class="bg-slate-50 text-slate-500 text-xs">
@@ -393,7 +394,7 @@ function render() {
   const sum = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
   $("kpi-label").textContent = $("filter-month").value ? "Total du mois" : "Total des dépenses";
   $("kpi-total").textContent = fmt(sum("total")); $("kpi-tps").textContent = fmt(sum("tps")); $("kpi-tvq").textContent = fmt(sum("tvq")); $("kpi-count").textContent = data.length;
-  const del = $("del-event-btn"); del.classList.toggle("hidden", !cf.event);
+  const del = $("del-event-btn"); del.classList.toggle("hidden", !cf.event); $("ren-event-btn").classList.toggle("hidden", !cf.event);
   if (cf.event) del.innerHTML = `<i class="fa-solid fa-trash mr-1"></i>Supprimer l'événement « ${esc(cf.event)} »`;
 }
 $("expenses-table-body").addEventListener("click", async ev => {
@@ -408,6 +409,42 @@ $("expenses-table-body").addEventListener("click", async ev => {
     expenses = expenses.filter(x => x.id !== e.id); await saveData(); deleteReceipt(e.photoId);
     if (editingId === e.id) resetForm(); rebuildFilters(); render();
   } catch (err) { expenses = backup; await handleConflict(err); }
+});
+
+// ---------- Renommer un événement ----------
+$("ren-event-btn").addEventListener("click", async () => {
+  const oldName = cf.event; if (!oldName) return;
+  const typed = (prompt(`Nouveau nom pour l'événement « ${oldName} » :`, oldName) || "").trim();
+  if (!typed || typed === oldName) return;
+  if (allEvents().some(n => n !== oldName && n.toLowerCase() === typed.toLowerCase())) return alert("Un événement porte déjà ce nom.");
+  const btn = $("ren-event-btn"); btn.disabled = true;
+  const backup = expenses.slice(), backupEvents = events.slice();
+  const oldF = folderName(oldName), newF = folderName(typed);
+  let folderId = null;
+  try {
+    if (oldF !== newF) {
+      folderId = await findFolder(oldF);
+      if (folderId) await graph("/items/" + folderId, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newF, "@microsoft.graph.conflictBehavior": "fail" }) });
+    }
+    expenses = expenses.map(e => e.event === oldName ? { ...e, event: typed } : e);
+    events = [...new Set(events.map(n => n === oldName ? typed : n))];
+    if (!events.includes(typed)) events.push(typed);
+    // Met à jour les liens « Ouvrir dans OneDrive » (le chemin du dossier a changé)
+    await Promise.all(expenses.filter(e => e.event === typed && e.photoId).map(async e => {
+      try { e.photoUrl = (await (await graph("/items/" + e.photoId)).json()).webUrl || e.photoUrl; } catch (_) {}
+    }));
+    await saveData();
+  } catch (e) {
+    expenses = backup; events = backupEvents;
+    if (folderId) await graph("/items/" + folderId, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: oldF }) }).catch(() => {});
+    btn.disabled = false;
+    if (e.status === 409) return alert("Un dossier OneDrive porte déjà ce nom. Choisis un autre nom.");
+    return handleConflict(e);
+  }
+  btn.disabled = false;
+  cf.event = typed; buildEventSelect(); rebuildFilters();
+  const sel = document.querySelector('select[data-f="event"]'); sel.value = typed; cf.event = typed;
+  render();
 });
 
 // ---------- Suppression d'un événement ----------
