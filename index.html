@@ -3,136 +3,234 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Suivi des Dépenses Professionnelles</title>
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Dépenses">
+<title>Suivi des dépenses professionnelles</title>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
 <style>
-.lbl{display:block;font-size:.75rem;font-weight:600;color:#64748b;margin-bottom:.25rem}
-.inp{width:100%;padding:.625rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem;outline:none;background:#fff}
-.inp:focus{box-shadow:0 0 0 2px #3b82f6}.inp[readonly]{background:#f1f5f9}
-.card{background:#fff;padding:1.5rem;border-radius:1rem;border:1px solid #f1f5f9;box-shadow:0 1px 2px #0000000d}
+:root{--safe-b:env(safe-area-inset-bottom,0px)}
+body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+.lbl{display:block;font-size:.72rem;font-weight:600;color:#64748b;margin-bottom:.3rem;letter-spacing:.01em}
+.inp{width:100%;height:2.75rem;padding:0 .8rem;border:1px solid #e2e8f0;border-radius:.75rem;font-size:.875rem;outline:none;background:#fff;color:#0f172a;transition:border-color .15s,box-shadow .15s}
+textarea.inp{height:auto;padding:.65rem .8rem;resize:vertical}
+select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .8rem center;padding-right:2.2rem}
+.inp:focus{border-color:#2563eb;box-shadow:0 0 0 3px #2563eb26}
+.inp[readonly],.inp:disabled{background:#f8fafc;color:#475569}
+.inp-sm{height:2.1rem;font-size:.75rem;padding:0 .55rem;border-radius:.55rem}
+select.inp-sm{padding-right:1.8rem;background-position:right .5rem center}
+.hidden{display:none!important}
+.card{background-color:#fff;border-radius:1.1rem;border:1px solid #e2e8f0;box-shadow:0 1px 2px #0f172a0a}
+.sec-title{display:flex;align-items:center;gap:.5rem;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8}
+.sec-title b{display:inline-flex;width:1.3rem;height:1.3rem;border-radius:999px;background:#eff6ff;color:#2563eb;align-items:center;justify-content:center;font-size:.65rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;font-weight:600;border-radius:.75rem;transition:background .15s,transform .05s}
+.btn:active{transform:scale(.98)}.btn:disabled{opacity:.6}
+.chip{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .55rem;border-radius:999px;font-size:.7rem;font-weight:600;background:#f1f5f9;color:#475569;white-space:nowrap}
+.ticon{width:2.5rem;height:2.5rem;border-radius:.8rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#eff6ff;color:#2563eb}
+thead.sticky-h th{position:sticky;top:0;z-index:1}
+#toast{transition:opacity .2s,transform .2s}
+@media (max-width:767px){
+  .inp{font-size:16px} /* évite le zoom automatique sur iPhone */
+  .inp-sm{font-size:14px;height:2.4rem}
+  body[data-tab="form"] .tab-list{display:none}
+  body[data-tab="list"] .tab-form{display:none}
+  #app-content{padding-bottom:calc(5.5rem + var(--safe-b))}
+}
 </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen font-sans pb-12">
+<body class="bg-slate-100 text-slate-800 min-h-screen" data-tab="form">
 
-<div id="auth-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-  <div class="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full text-center space-y-4">
-    <div class="w-14 h-14 bg-blue-600 text-white rounded-xl mx-auto flex items-center justify-center text-2xl"><i class="fa-solid fa-lock"></i></div>
-    <h1 class="font-bold text-xl text-slate-900">Connexion requise</h1>
-    <p class="text-sm text-slate-500">Connecte-toi avec ton compte Microsoft. Tes reçus et tes données sont enregistrés dans ton OneDrive.</p>
-    <button id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold text-sm shadow-md transition"><i class="fa-brands fa-microsoft mr-2"></i>Se connecter avec Microsoft</button>
+<div id="auth-modal" class="fixed inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 z-50 flex items-center justify-center p-5">
+  <div class="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center space-y-5">
+    <div class="w-16 h-16 bg-blue-600 text-white rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-lg shadow-blue-600/30"><i class="fa-solid fa-receipt"></i></div>
+    <div class="space-y-1">
+      <h1 class="font-bold text-xl text-slate-900">Suivi des dépenses</h1>
+      <p class="text-sm text-slate-500">Connecte-toi avec ton compte Microsoft. Tes reçus et tes données sont enregistrés dans ton OneDrive.</p>
+    </div>
+    <button id="login-btn" class="btn w-full bg-blue-600 hover:bg-blue-700 text-white h-12 text-sm shadow-md"><i class="fa-brands fa-microsoft"></i>Se connecter avec Microsoft</button>
     <p id="auth-error" class="text-red-500 text-xs"></p>
   </div>
 </div>
 
 <!-- Visionneuse de reçu -->
-<div id="viewer" class="hidden fixed inset-0 z-40 bg-slate-900/70 flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
-    <div class="flex justify-between items-center gap-3 p-3 border-b">
+<div id="viewer" class="hidden fixed inset-0 z-40 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center md:p-6">
+  <div class="bg-white md:rounded-2xl w-full h-full md:h-auto md:max-w-3xl md:max-h-[90vh] flex flex-col overflow-hidden">
+    <div class="flex justify-between items-center gap-3 px-4 py-3 border-b" style="padding-top:max(.75rem,env(safe-area-inset-top))">
       <span id="viewer-title" class="text-sm font-semibold truncate"></span>
-      <div class="flex items-center gap-4 shrink-0">
-        <a id="viewer-link" href="#" target="_blank" rel="noopener" class="text-xs text-blue-600 underline">Ouvrir dans OneDrive</a>
-        <button id="viewer-close" aria-label="Fermer" class="text-slate-500 hover:text-slate-800 text-lg px-2"><i class="fa-solid fa-xmark"></i></button>
+      <div class="flex items-center gap-2 shrink-0">
+        <a id="viewer-link" href="#" target="_blank" rel="noopener" class="btn text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 h-9"><i class="fa-solid fa-arrow-up-right-from-square"></i><span class="hidden sm:inline">Ouvrir dans OneDrive</span></a>
+        <button id="viewer-close" aria-label="Fermer" class="btn w-9 h-9 text-slate-500 bg-slate-100 hover:bg-slate-200"><i class="fa-solid fa-xmark"></i></button>
       </div>
     </div>
-    <div id="viewer-body" class="overflow-auto p-3 flex-1 flex justify-center"></div>
+    <div id="viewer-body" class="overflow-auto p-3 flex-1 flex justify-center bg-slate-50 text-sm text-slate-500"></div>
   </div>
 </div>
 
-<div id="app-content" class="hidden max-w-6xl mx-auto p-4 md:p-6 space-y-6">
-  <header class="card !p-4 flex justify-between items-center gap-2">
-    <h1 class="font-bold text-lg"><i class="fa-solid fa-receipt text-blue-600 mr-2"></i>Suivi des dépenses professionnelles</h1>
-    <div class="flex items-center gap-3"><span id="user-name" class="text-xs text-slate-400 hidden md:inline"></span>
-    <button id="logout-btn" class="text-xs font-semibold text-red-500 bg-red-50 hover:bg-red-100 px-3 py-2 rounded-lg transition">Déconnexion</button></div>
-  </header>
+<!-- Message de confirmation -->
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 z-50 opacity-0 pointer-events-none translate-y-2 bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg" style="bottom:calc(6rem + var(--safe-b))"></div>
 
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="card !p-4"><span id="kpi-label" class="text-xs font-semibold text-slate-400">Total des dépenses</span><div id="kpi-total" class="text-xl font-extrabold mt-1">0,00 $</div></div>
-    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">TPS récupérable</span><div id="kpi-tps" class="text-xl font-extrabold text-blue-600 mt-1">0,00 $</div></div>
-    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">TVQ récupérable</span><div id="kpi-tvq" class="text-xl font-extrabold text-emerald-600 mt-1">0,00 $</div></div>
-    <div class="card !p-4"><span class="text-xs font-semibold text-slate-400">Nombre de reçus</span><div id="kpi-count" class="text-xl font-extrabold mt-1">0</div></div>
+<header id="app-header" class="hidden sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200" style="padding-top:env(safe-area-inset-top)">
+  <div class="max-w-6xl mx-auto px-4 md:px-6 h-14 flex justify-between items-center gap-3">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <div class="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm shrink-0"><i class="fa-solid fa-receipt"></i></div>
+      <h1 class="font-bold text-slate-900 truncate"><span class="md:hidden">Mes dépenses</span><span class="hidden md:inline">Suivi des dépenses professionnelles</span></h1>
+    </div>
+    <div class="flex items-center gap-3 shrink-0">
+      <span id="user-name" class="text-xs text-slate-400 hidden md:inline"></span>
+      <button id="logout-btn" title="Déconnexion" class="btn text-xs text-slate-500 hover:text-red-600 bg-slate-100 hover:bg-red-50 h-9 px-3"><i class="fa-solid fa-right-from-bracket"></i><span class="hidden md:inline">Déconnexion</span></button>
+    </div>
   </div>
+</header>
 
-  <div class="card space-y-4">
-    <h2 id="form-title" class="font-bold text-slate-700 text-sm">Ajouter une dépense</h2>
-    <form id="expense-form" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div><label class="lbl">Date</label><input type="date" id="exp-date" required class="inp"></div>
-      <div>
-        <label class="lbl">Événement (nom du dossier)</label>
-        <select id="exp-event" class="inp"></select>
-        <input id="exp-event-new" placeholder="Nom du nouvel événement" class="inp hidden mt-2">
-      </div>
-      <div><label class="lbl">Type de dépense</label><select id="exp-type" class="inp"></select></div>
-      <div id="km-wrap" class="hidden"><label class="lbl">Distance parcourue (km)</label><input type="number" step="0.1" min="0" id="exp-km" placeholder="ex: 124" class="inp"></div>
-      <div><label class="lbl">Description (facultatif)</label><input id="exp-desc" placeholder="ex: café" class="inp"></div>
-      <div id="currency-wrap"><label class="lbl">Devise du reçu</label><select id="exp-currency" class="inp"><option value="CAD">$ CA</option><option value="USD">$ US</option></select></div>
-      <div id="usd-wrap" class="hidden"><label class="lbl">Montant sur le reçu ($ US)</label><input type="number" step="0.01" min="0" id="exp-usd" class="inp"></div>
-      <div><label class="lbl">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxe / hors QC</option></select></div>
-      <div><label id="amount-label" class="lbl">Montant total payé ($)</label><input type="number" step="0.01" id="exp-amount" class="inp"></div>
-      <div id="tip-wrap"><label class="lbl">Pourboire ($, retiré avant le calcul des taxes)</label><input type="number" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
-      <div><label class="lbl">Sous-total (hors taxes)</label><input type="number" step="0.01" id="exp-subtotal" class="inp" readonly></div>
-      <div><label class="lbl">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp" readonly></div>
-      <div><label class="lbl">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp" readonly></div>
-      <div class="md:col-span-3"><label class="lbl">Explication (facultatif)</label><textarea id="exp-note" rows="2" placeholder="ex: 80 % de la facture applicable, une nuit était à mes frais." class="inp"></textarea></div>
-      <div class="md:col-span-3 space-y-2">
-        <label class="lbl">Photo ou PDF du reçu (4 Mo max pour un PDF) <span id="photo-hint" class="font-normal text-slate-400"></span></label>
-        <div class="flex flex-col sm:flex-row sm:items-center gap-2">
-          <button type="button" id="cam-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shrink-0"><i class="fa-solid fa-camera mr-2"></i>Prendre une photo</button>
-          <input type="file" id="exp-camera" accept="image/*" capture="environment" class="hidden">
-          <input type="file" id="exp-photo" accept="image/*,application/pdf" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700">
+<main id="app-content" class="hidden max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-5">
+
+  <!-- Indicateurs -->
+  <section class="tab-list grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="card p-4 bg-gradient-to-br from-slate-900 to-slate-700 !border-slate-800 text-white">
+      <div class="flex items-center justify-between"><span id="kpi-label" class="text-[11px] font-semibold text-slate-300">Total des dépenses</span><i class="fa-solid fa-wallet text-slate-400 text-xs"></i></div>
+      <div id="kpi-total" class="text-xl md:text-2xl font-extrabold mt-1.5 tabular-nums">0,00 $</div>
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between"><span class="text-[11px] font-semibold text-slate-400">TPS récupérable</span><i class="fa-solid fa-percent text-blue-300 text-xs"></i></div>
+      <div id="kpi-tps" class="text-xl md:text-2xl font-extrabold text-blue-600 mt-1.5 tabular-nums">0,00 $</div>
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between"><span class="text-[11px] font-semibold text-slate-400">TVQ récupérable</span><i class="fa-solid fa-percent text-emerald-300 text-xs"></i></div>
+      <div id="kpi-tvq" class="text-xl md:text-2xl font-extrabold text-emerald-600 mt-1.5 tabular-nums">0,00 $</div>
+    </div>
+    <div class="card p-4">
+      <div class="flex items-center justify-between"><span class="text-[11px] font-semibold text-slate-400">Nombre de reçus</span><i class="fa-solid fa-file-invoice text-slate-300 text-xs"></i></div>
+      <div id="kpi-count" class="text-xl md:text-2xl font-extrabold mt-1.5 tabular-nums">0</div>
+    </div>
+  </section>
+
+  <!-- Formulaire -->
+  <section class="tab-form card p-4 md:p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h2 id="form-title" class="font-bold text-slate-900">Ajouter une dépense</h2>
+      <button type="button" id="cancel-btn" class="hidden btn text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 h-9 px-3"><i class="fa-solid fa-xmark"></i>Annuler</button>
+    </div>
+    <form id="expense-form" class="space-y-6" novalidate>
+
+      <fieldset class="space-y-3">
+        <legend class="sec-title mb-3"><b>1</b>Dépense</legend>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div class="col-span-1"><label class="lbl" for="exp-date">Date</label><input type="date" id="exp-date" required class="inp"></div>
+          <div class="col-span-1 md:col-span-1"><label class="lbl" for="exp-type">Type</label><select id="exp-type" class="inp"></select></div>
+          <div class="col-span-2 md:col-span-1">
+            <label class="lbl" for="exp-event">Événement (nom du dossier)</label>
+            <select id="exp-event" class="inp"></select>
+            <input id="exp-event-new" placeholder="Nom du nouvel événement" class="inp hidden mt-2">
+          </div>
+          <div id="km-wrap" class="hidden col-span-2 md:col-span-1"><label class="lbl" for="exp-km">Distance parcourue (km)</label><input type="number" inputmode="decimal" step="0.1" min="0" id="exp-km" placeholder="ex: 124" class="inp"></div>
+          <div class="col-span-2 md:col-span-2"><label class="lbl" for="exp-desc">Description <span class="font-normal text-slate-400">(facultatif)</span></label><input id="exp-desc" placeholder="ex: café" class="inp"></div>
         </div>
-        <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-40 rounded-xl border p-1 mt-2">
-      </div>
-      <div class="md:col-span-3 flex justify-end gap-2">
-        <button type="button" id="cancel-btn" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-semibold">Annuler la modification</button>
-        <button type="submit" id="submit-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-md">Enregistrer la dépense</button>
+      </fieldset>
+
+      <fieldset class="space-y-3">
+        <legend class="sec-title mb-3"><b>2</b>Montant</legend>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div class="col-span-2 md:col-span-1"><label class="lbl" for="tax-mode">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxe / hors QC</option></select></div>
+          <div id="currency-wrap"><label class="lbl" for="exp-currency">Devise du reçu</label><select id="exp-currency" class="inp"><option value="CAD">$ CA</option><option value="USD">$ US</option></select></div>
+          <div id="tip-wrap"><label class="lbl" for="exp-tip">Pourboire ($)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
+          <div id="usd-wrap" class="hidden col-span-2 md:col-span-1"><label class="lbl" for="exp-usd">Montant sur le reçu ($ US)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-usd" class="inp" placeholder="0.00"></div>
+          <div class="col-span-2 md:col-span-1"><label id="amount-label" class="lbl" for="exp-amount">Montant total payé ($)</label><input type="number" inputmode="decimal" step="0.01" id="exp-amount" class="inp !font-semibold" placeholder="0.00"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 border border-slate-100 p-3">
+          <div><label class="lbl !text-[10px]" for="exp-subtotal">Sous-total</label><input type="number" step="0.01" id="exp-subtotal" class="inp inp-sm !bg-white tabular-nums" readonly tabindex="-1"></div>
+          <div><label class="lbl !text-[10px]" for="exp-tps">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp inp-sm !bg-white tabular-nums !text-blue-700" readonly tabindex="-1"></div>
+          <div><label class="lbl !text-[10px]" for="exp-tvq">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp inp-sm !bg-white tabular-nums !text-emerald-700" readonly tabindex="-1"></div>
+          <p class="col-span-3 text-[11px] text-slate-400">Calcul automatique. Le pourboire est retiré du montant avant le calcul des taxes.</p>
+        </div>
+      </fieldset>
+
+      <fieldset class="space-y-3">
+        <legend class="sec-title mb-3"><b>3</b>Reçu et explication</legend>
+        <div class="space-y-2">
+          <span class="lbl">Photo ou PDF du reçu <span class="font-normal text-slate-400">(PDF : 4 Mo max)</span> <span id="photo-hint" class="font-normal text-slate-400"></span></span>
+          <div class="grid grid-cols-2 md:flex gap-2">
+            <button type="button" id="cam-btn" class="btn bg-blue-600 hover:bg-blue-700 text-white h-12 md:h-11 px-4 text-sm"><i class="fa-solid fa-camera"></i>Prendre une photo</button>
+            <label for="exp-photo" class="btn bg-blue-50 hover:bg-blue-100 text-blue-700 h-12 md:h-11 px-4 text-sm cursor-pointer"><i class="fa-solid fa-paperclip"></i>Choisir un fichier</label>
+          </div>
+          <input type="file" id="exp-camera" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="exp-photo" accept="image/*,application/pdf" class="hidden">
+          <div id="file-name" class="hidden text-xs text-slate-500"></div>
+          <img id="receipt-preview" alt="Aperçu du reçu" class="hidden max-h-48 rounded-xl border border-slate-200 p-1 bg-white">
+        </div>
+        <div><label class="lbl" for="exp-note">Explication <span class="font-normal text-slate-400">(facultatif)</span></label><textarea id="exp-note" rows="2" placeholder="ex: 80 % de la facture applicable, une nuit était à mes frais." class="inp"></textarea></div>
+      </fieldset>
+
+      <div class="flex justify-end">
+        <button type="submit" id="submit-btn" class="btn w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white h-12 px-8 text-sm shadow-md shadow-emerald-600/20">Enregistrer la dépense</button>
       </div>
     </form>
-  </div>
+  </section>
 
-  <div class="card space-y-4">
-    <div class="flex flex-col md:flex-row justify-between md:items-end gap-3">
-      <div class="flex flex-wrap items-end gap-3">
-        <h2 class="font-bold text-slate-700 text-sm w-full">Historique des dépenses</h2>
-        <div><label class="lbl">Mois</label><input type="month" id="filter-month" class="inp"></div>
-        <button id="filter-reset" class="text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 px-3 py-2.5 rounded-xl">Effacer les filtres</button>
-        <button id="ren-event-btn" class="hidden text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2.5 rounded-xl"><i class="fa-solid fa-pen mr-1"></i>Renommer l'événement</button>
-        <button id="del-event-btn" class="hidden text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-2.5 rounded-xl"></button>
+  <!-- Historique -->
+  <section class="tab-list card overflow-hidden">
+    <div class="p-4 md:p-5 space-y-3 border-b border-slate-100">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="font-bold text-slate-900">Historique</h2>
+        <button id="export-btn" class="btn bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 px-3"><i class="fa-solid fa-file-excel"></i><span>Exporter en Excel</span></button>
       </div>
-      <button id="export-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 justify-center"><i class="fa-solid fa-file-excel"></i><span>Exporter la sélection (.xlsx, avec photos)</span></button>
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="flex-1 min-w-[8rem] md:flex-none md:w-40"><label class="lbl" for="filter-month">Mois</label><input type="month" id="filter-month" class="inp inp-sm"></div>
+        <!-- Filtres version cellulaire (synchronisés avec ceux du tableau) -->
+        <div class="md:hidden flex-1 min-w-[8rem]"><label class="lbl">Événement</label><select data-f="event" class="inp inp-sm"></select></div>
+        <div class="md:hidden flex-1 min-w-[8rem]"><label class="lbl">Type</label><select data-f="type" class="inp inp-sm"></select></div>
+        <div class="md:hidden w-full"><input data-f="desc" placeholder="Rechercher une description…" class="inp inp-sm"></div>
+        <button id="filter-reset" class="btn text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 h-[2.1rem] px-3 max-md:h-10"><i class="fa-solid fa-filter-circle-xmark"></i>Effacer</button>
+        <button id="ren-event-btn" class="hidden btn text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 h-[2.1rem] px-3 max-md:h-10"><i class="fa-solid fa-pen"></i>Renommer l'événement</button>
+        <button id="del-event-btn" class="hidden btn text-xs text-red-600 bg-red-50 hover:bg-red-100 h-[2.1rem] px-3 max-md:h-10"></button>
+      </div>
+      <p class="hidden md:block text-[11px] text-slate-400">Clique sur un titre de colonne pour trier. Les cases sous les titres filtrent le tableau, les totaux et l'export. Pour renommer ou supprimer un événement, choisis-le dans le filtre « Événement ».</p>
     </div>
-    <p class="text-xs text-slate-400">Clique sur un titre de colonne pour trier. Les cases sous les titres filtrent le tableau, les totaux et l'export. Pour renommer ou supprimer un événement, choisis-le dans le filtre de la colonne « Événement ».</p>
-    <div class="overflow-x-auto"><table class="w-full text-left text-sm">
-      <thead>
-        <tr class="bg-slate-50 text-slate-500 text-xs">
-          <th class="p-3 cursor-pointer select-none" data-sort="date">Date<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="event">Événement<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="desc">Description<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="type">Type<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="tip">Pourboire<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="total">Total<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="tps">TPS<span class="ind"></span></th>
-          <th class="p-3 cursor-pointer select-none" data-sort="tvq">TVQ<span class="ind"></span></th>
-          <th class="p-3">Reçu</th><th class="p-3">Actions</th>
+
+    <!-- Cartes (cellulaire) -->
+    <div id="expenses-cards" class="md:hidden divide-y divide-slate-100"></div>
+
+    <!-- Tableau (ordinateur) -->
+    <div class="hidden md:block overflow-auto max-h-[70vh]"><table class="w-full text-left text-sm">
+      <thead class="sticky-h">
+        <tr class="text-slate-500 text-[11px] uppercase tracking-wide">
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none" data-sort="date">Date<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none" data-sort="event">Événement<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none" data-sort="desc">Description<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none" data-sort="type">Type<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none text-right" data-sort="tip">Pourb.<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none text-right" data-sort="total">Total<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none text-right" data-sort="tps">TPS<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 cursor-pointer select-none text-right" data-sort="tvq">TVQ<span class="ind"></span></th>
+          <th class="bg-slate-50 px-3 pt-3 pb-1 text-center">Reçu</th><th class="bg-slate-50 px-3 pt-3 pb-1"></th>
         </tr>
-        <tr class="bg-slate-50">
-          <th class="px-2 pb-2"><input data-f="date" placeholder="ex: 2026-11" class="inp !p-1.5 !text-xs"></th>
-          <th class="px-2 pb-2"><select data-f="event" class="inp !p-1.5 !text-xs"></select></th>
-          <th class="px-2 pb-2"><input data-f="desc" placeholder="Filtrer" class="inp !p-1.5 !text-xs"></th>
-          <th class="px-2 pb-2"><select data-f="type" class="inp !p-1.5 !text-xs"></select></th>
-          <th class="px-2 pb-2"><input data-f="tip" placeholder="Filtrer" class="inp !p-1.5 !text-xs"></th>
-          <th class="px-2 pb-2"><input data-f="total" placeholder="Filtrer" class="inp !p-1.5 !text-xs"></th>
-          <th class="px-2 pb-2"><input data-f="tps" placeholder="Filtrer" class="inp !p-1.5 !text-xs"></th>
-          <th class="px-2 pb-2"><input data-f="tvq" placeholder="Filtrer" class="inp !p-1.5 !text-xs"></th>
-          <th></th><th></th>
+        <tr>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="date" placeholder="2026-11" class="inp inp-sm"></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><select data-f="event" class="inp inp-sm"></select></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="desc" placeholder="Filtrer" class="inp inp-sm"></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><select data-f="type" class="inp inp-sm"></select></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="tip" placeholder="Filtrer" class="inp inp-sm w-20"></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="total" placeholder="Filtrer" class="inp inp-sm w-24"></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="tps" placeholder="Filtrer" class="inp inp-sm w-20"></th>
+          <th class="bg-slate-50 px-2 pb-2 border-b border-slate-200"><input data-f="tvq" placeholder="Filtrer" class="inp inp-sm w-20"></th>
+          <th class="bg-slate-50 border-b border-slate-200"></th><th class="bg-slate-50 border-b border-slate-200"></th>
         </tr>
       </thead>
       <tbody id="expenses-table-body" class="divide-y divide-slate-100"></tbody>
     </table></div>
+  </section>
+</main>
+
+<!-- Navigation du bas (cellulaire) -->
+<nav id="bottom-nav" class="hidden md:!hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200" style="padding-bottom:var(--safe-b)">
+  <div class="grid grid-cols-2 h-16">
+    <button data-tab-btn="form" class="flex flex-col items-center justify-center gap-1 text-[11px] font-semibold"><i class="fa-solid fa-circle-plus text-lg"></i>Ajouter</button>
+    <button data-tab-btn="list" class="flex flex-col items-center justify-center gap-1 text-[11px] font-semibold relative"><i class="fa-solid fa-list-ul text-lg"></i>Historique<span id="nav-count" class="absolute top-2 left-1/2 ml-2 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-blue-600 text-white text-[10px] leading-[1.1rem] hidden"></span></button>
   </div>
-</div>
+</nav>
 
 <script>
 const CLIENT_ID = "9e37def5-30fd-4123-a0c8-b4b4785bf81b";
@@ -173,7 +271,7 @@ async function init() {
     if (!acc) return;
     app.setActiveAccount(acc);
     $("auth-modal").classList.add("hidden");
-    $("app-content").classList.remove("hidden");
+    $("app-content").classList.remove("hidden"); $("app-header").classList.remove("hidden"); $("bottom-nav").classList.remove("hidden"); setTab("form");
     $("user-name").textContent = acc.username || "";
     buildTypeSelect(); $("exp-date").value = todayStr(); $("filter-month").value = todayStr().slice(0, 7);
     await refresh();
@@ -240,9 +338,10 @@ async function fetchReceipt(id) {
   return { buf: await r.arrayBuffer(), type: m.file?.mimeType || "" };
 }
 async function refresh() {
-  $("expenses-table-body").innerHTML = `<tr><td colspan="10" class="p-8 text-center text-slate-400">Chargement…</td></tr>`;
+  const msg = (t, c) => { const h = `<div class="py-12 text-center text-sm ${c}">${t}</div>`; $("expenses-table-body").innerHTML = `<tr><td colspan="10">${h}</td></tr>`; $("expenses-cards").innerHTML = h; };
+  msg(`<i class="fa-solid fa-spinner fa-spin mr-2"></i>Chargement…`, "text-slate-400");
   try { await loadData(); buildEventSelect(); rebuildFilters(); render(); }
-  catch (e) { $("expenses-table-body").innerHTML = `<tr><td colspan="10" class="p-8 text-center text-red-500">Impossible de charger les dépenses : ${esc(e.message)}</td></tr>`; }
+  catch (e) { msg("Impossible de charger les dépenses : " + esc(e.message), "text-red-500"); }
 }
 
 // ---------- Événements et types ----------
@@ -298,7 +397,8 @@ const getFile = () => $("exp-camera").files[0] || $("exp-photo").files[0];
 $("cam-btn").addEventListener("click", () => $("exp-camera").click());
 ["exp-camera", "exp-photo"].forEach(id => $(id).addEventListener("change", e => {
   if (e.target.files[0]) $(id === "exp-camera" ? "exp-photo" : "exp-camera").value = ""; // garde un seul fichier
-  const f = getFile(), p = $("receipt-preview");
+  const f = getFile(), p = $("receipt-preview"), fn = $("file-name");
+  fn.classList.toggle("hidden", !f); fn.innerHTML = f ? `<i class="fa-solid ${f.type === "application/pdf" ? "fa-file-pdf text-red-500" : "fa-image text-blue-500"} mr-1.5"></i>${esc(f.name)}` : "";
   if (!f || !f.type.startsWith("image/")) { p.classList.add("hidden"); return; }
   p.src = URL.createObjectURL(f); p.classList.remove("hidden");
 }));
@@ -319,7 +419,7 @@ function compressImage(file) {
 // ---------- Formulaire ----------
 function resetForm(keepEvent = "") {
   editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
-  $("receipt-preview").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
+  $("receipt-preview").classList.add("hidden"); $("file-name").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
   $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
   applyModes();
 }
@@ -331,10 +431,10 @@ function startEdit(id) {
   $("exp-currency").value = e.currency === "USD" ? "USD" : "CAD"; $("exp-usd").value = e.usd ? e.usd.toFixed(2) : ""; $("exp-km").value = e.km || "";
   taxForced = false; $("tax-mode").disabled = false;
   $("tax-mode").value = (e.tps || e.tvq) ? "included" : "excluded"; $("exp-amount").value = e.total; $("exp-tip").value = e.tip ? e.tip.toFixed(2) : "";
-  $("exp-note").value = e.note || ""; $("exp-photo").value = ""; $("exp-camera").value = ""; $("receipt-preview").classList.add("hidden");
+  $("exp-note").value = e.note || ""; $("exp-photo").value = ""; $("exp-camera").value = ""; $("receipt-preview").classList.add("hidden"); $("file-name").classList.add("hidden");
   $("photo-hint").textContent = e.photoId ? "(laisser vide pour garder le reçu actuel)" : "";
   $("form-title").textContent = "Modifier la dépense"; $("submit-btn").textContent = "Enregistrer les modifications"; $("cancel-btn").classList.remove("hidden");
-  applyModes(); $("expense-form").scrollIntoView({ behavior: "smooth" });
+  applyModes(); setTab("form"); $("expense-form").closest("section").scrollIntoView({ behavior: "smooth" });
 }
 async function handleConflict(e) {
   if (e.status === 412) { alert("Les données ont été modifiées ailleurs. Elles sont rechargées : refais ta modification."); await refresh(); }
@@ -349,6 +449,7 @@ $("expense-form").addEventListener("submit", async ev => {
     if (!typed) return alert("Entre le nom du nouvel événement.");
     evName = allEvents().find(n => n.toLowerCase() === typed.toLowerCase()) || typed; // évite les doublons de casse
   }
+  if (!$("exp-date").value) return alert("Entre la date de la dépense.");
   if (!evName) return alert("Choisis un événement ou crée-en un nouveau.");
   const isKm = $("exp-type").value === KM, isUsd = !isKm && $("exp-currency").value === "USD";
   const total = num($("exp-amount").value), dateV = $("exp-date").value;
@@ -390,7 +491,8 @@ $("expense-form").addEventListener("submit", async ev => {
     expenses = existing ? expenses.map(x => x.id === rec.id ? rec : x) : [rec, ...expenses];
     await saveData();
     if (file && existing) deleteReceipt(existing.photoId);
-    resetForm(evName); rebuildFilters(); render();
+    const wasEdit = !!existing; resetForm(evName); rebuildFilters(); render();
+    toast(wasEdit ? "Modification enregistrée" : "Dépense enregistrée");
   } catch (e) {
     expenses = backup; events = backupEvents; if (uploaded) deleteReceipt(uploaded.photoId);
     await handleConflict(e);
@@ -404,10 +506,12 @@ function fillSelect(sel, vals, all) {
   sel.value = vals.includes(cur) ? cur : ""; cf[sel.dataset.f] = sel.value;
 }
 function rebuildFilters() {
-  fillSelect(document.querySelector('select[data-f="event"]'), allEvents(), "Tous");
-  fillSelect(document.querySelector('select[data-f="type"]'), [...new Set(expenses.map(e => e.type).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), "Tous");
+  const types = [...new Set(expenses.map(e => e.type).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+  document.querySelectorAll('select[data-f="event"]').forEach(sel => fillSelect(sel, allEvents(), "Tous"));
+  document.querySelectorAll('select[data-f="type"]').forEach(sel => fillSelect(sel, types, "Tous"));
 }
-document.querySelectorAll("[data-f]").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { cf[el.dataset.f] = el.value; render(); }));
+const setFilterUI = (k, v) => document.querySelectorAll(`[data-f="${k}"]`).forEach(o => { o.value = v; });
+document.querySelectorAll("[data-f]").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => { cf[el.dataset.f] = el.value; setFilterUI(el.dataset.f, el.value); render(); }));
 document.querySelectorAll("[data-sort]").forEach(th => th.addEventListener("click", () => {
   sort = { key: th.dataset.sort, dir: sort.key === th.dataset.sort ? -sort.dir : 1 }; render();
 }));
@@ -426,25 +530,56 @@ function getFiltered() {
   const k = sort.key;
   return d.sort((a, b) => sort.dir * (NUMERIC.includes(k) ? (a[k] || 0) - (b[k] || 0) : String(a[k] || "").localeCompare(String(b[k] || ""), "fr")));
 }
+const TYPE_ICONS = { "Restaurant": "fa-utensils", "Hôtel": "fa-bed", "Stationnement": "fa-square-parking", "Taxi": "fa-taxi", "Essence": "fa-gas-pump", "Location auto": "fa-car", "Kilométrage": "fa-road", "Autre": "fa-receipt" };
+const TYPE_COLORS = { "Restaurant": "bg-orange-50 text-orange-600", "Hôtel": "bg-violet-50 text-violet-600", "Stationnement": "bg-sky-50 text-sky-600", "Taxi": "bg-yellow-50 text-yellow-600", "Essence": "bg-rose-50 text-rose-600", "Location auto": "bg-indigo-50 text-indigo-600", "Kilométrage": "bg-teal-50 text-teal-600" };
+const typeIcon = t => `<i class="fa-solid ${TYPE_ICONS[t] || "fa-receipt"}"></i>`;
+const typeColor = t => TYPE_COLORS[t] || "bg-slate-100 text-slate-500";
+const fmtDate = d => { if (!d) return ""; const [y, m, j] = d.split("-").map(Number); return new Date(y, m - 1, j).toLocaleDateString("fr-CA", { day: "numeric", month: "short", year: "numeric" }); };
+const kmLine = e => e.km ? `${esc(String(e.km).replace(".", ","))} km × ${fmt(e.kmRate || KM_RATE)}` : "";
 function render() {
-  const data = getFiltered(), tb = $("expenses-table-body");
-  tb.innerHTML = data.length ? data.map(e => `<tr class="hover:bg-slate-50/80">
-    <td class="p-3 whitespace-nowrap">${esc(e.date)}</td>
-    <td class="p-3 font-medium text-slate-900">${esc(e.event || "-")}</td>
-    <td class="p-3 text-slate-700">${esc(e.desc || "")}${e.km ? `<div class="text-xs text-slate-500 mt-0.5">${esc(String(e.km).replace(".", ","))} km × ${fmt(e.kmRate || KM_RATE)}</div>` : ""}${e.note ? `<div class="text-xs text-slate-400 mt-0.5">${esc(e.note)}</div>` : ""}</td><td class="p-3 text-slate-600">${esc(e.type || "-")}</td>
-    <td class="p-3 whitespace-nowrap text-slate-500">${e.tip ? fmt(e.tip) : ""}</td>
-    <td class="p-3 font-bold whitespace-nowrap">${fmt(e.total)}${e.currency === "USD" ? `<div class="text-xs font-normal text-slate-400">${fmtUsd(e.usd)}</div>` : ""}</td><td class="p-3 whitespace-nowrap">${fmt(e.tps)}</td><td class="p-3 whitespace-nowrap">${fmt(e.tvq)}</td>
-    <td class="p-3">${e.photoId ? `<button data-view="${esc(e.id)}" class="text-blue-600 underline font-medium">${e.isPdf ? "PDF" : "Voir"}</button>` : `<span class="text-slate-300">-</span>`}</td>
-    <td class="p-3 whitespace-nowrap"><button data-edit="${esc(e.id)}" class="text-blue-500 hover:text-blue-700 mr-3" title="Modifier"><i class="fa-solid fa-pen"></i></button><button data-del="${esc(e.id)}" class="text-red-400 hover:text-red-600" title="Supprimer"><i class="fa-solid fa-trash"></i></button></td></tr>`).join("")
-    : `<tr><td colspan="10" class="text-center p-8 text-slate-400">Aucune dépense pour cette sélection</td></tr>`;
+  const data = getFiltered(), tb = $("expenses-table-body"), cards = $("expenses-cards");
+  const empty = `<div class="py-12 text-center text-slate-400 text-sm"><i class="fa-regular fa-folder-open text-2xl mb-2 block"></i>Aucune dépense pour cette sélection</div>`;
+  tb.innerHTML = data.length ? data.map(e => `<tr class="hover:bg-blue-50/40 even:bg-slate-50/50 align-top">
+    <td class="px-3 py-3 whitespace-nowrap text-slate-600 tabular-nums">${esc(e.date)}</td>
+    <td class="px-3 py-3 font-medium text-slate-900">${esc(e.event || "-")}</td>
+    <td class="px-3 py-3 text-slate-700 max-w-[16rem]">${esc(e.desc || "")}${e.km ? `<div class="text-xs text-teal-700 mt-0.5">${kmLine(e)}</div>` : ""}${e.note ? `<div class="text-xs text-slate-400 mt-0.5 italic">${esc(e.note)}</div>` : ""}</td>
+    <td class="px-3 py-3"><span class="chip ${typeColor(e.type)}">${typeIcon(e.type)}${esc(e.type || "-")}</span></td>
+    <td class="px-3 py-3 whitespace-nowrap text-right text-slate-500 tabular-nums">${e.tip ? fmt(e.tip) : ""}</td>
+    <td class="px-3 py-3 whitespace-nowrap text-right font-bold text-slate-900 tabular-nums">${fmt(e.total)}${e.currency === "USD" ? `<div class="text-xs font-normal text-slate-400">${fmtUsd(e.usd)}</div>` : ""}</td>
+    <td class="px-3 py-3 whitespace-nowrap text-right text-slate-600 tabular-nums">${fmt(e.tps)}</td>
+    <td class="px-3 py-3 whitespace-nowrap text-right text-slate-600 tabular-nums">${fmt(e.tvq)}</td>
+    <td class="px-3 py-3 text-center">${e.photoId ? `<button data-view="${esc(e.id)}" title="Voir le reçu" class="btn w-8 h-8 bg-blue-50 text-blue-600 hover:bg-blue-100"><i class="fa-solid ${e.isPdf ? "fa-file-pdf" : "fa-image"}"></i></button>` : `<span class="text-slate-300">-</span>`}</td>
+    <td class="px-3 py-3 whitespace-nowrap text-right"><button data-edit="${esc(e.id)}" class="btn w-8 h-8 text-slate-500 hover:text-blue-600 hover:bg-blue-50" title="Modifier"><i class="fa-solid fa-pen"></i></button><button data-del="${esc(e.id)}" class="btn w-8 h-8 text-slate-400 hover:text-red-600 hover:bg-red-50" title="Supprimer"><i class="fa-solid fa-trash"></i></button></td></tr>`).join("")
+    : `<tr><td colspan="10">${empty}</td></tr>`;
+  cards.innerHTML = data.length ? data.map(e => `<div class="px-4 py-3.5 flex gap-3">
+    <div class="ticon ${typeColor(e.type)}">${typeIcon(e.type)}</div>
+    <div class="flex-1 min-w-0">
+      <div class="flex justify-between gap-2">
+        <div class="font-semibold text-slate-900 truncate">${esc(e.desc || e.type || "-")}</div>
+        <div class="font-bold text-slate-900 tabular-nums whitespace-nowrap">${fmt(e.total)}</div>
+      </div>
+      <div class="flex justify-between gap-2 text-xs text-slate-500 mt-0.5">
+        <div class="truncate">${esc(fmtDate(e.date))} · ${esc(e.event || "-")}</div>
+        ${e.currency === "USD" ? `<div class="whitespace-nowrap">${fmtUsd(e.usd)}</div>` : (e.tps || e.tvq) ? `<div class="whitespace-nowrap tabular-nums">TPS ${fmt(e.tps)} · TVQ ${fmt(e.tvq)}</div>` : ""}
+      </div>
+      ${e.km ? `<div class="text-xs text-teal-700 mt-1">${kmLine(e)}</div>` : ""}
+      ${e.tip ? `<div class="text-xs text-slate-400 mt-1">Pourboire ${fmt(e.tip)}</div>` : ""}
+      ${e.note ? `<div class="text-xs text-slate-500 italic mt-1 line-clamp-2">${esc(e.note)}</div>` : ""}
+      <div class="flex gap-2 mt-2.5">
+        ${e.photoId ? `<button data-view="${esc(e.id)}" class="btn h-8 px-3 text-xs bg-blue-50 text-blue-700"><i class="fa-solid ${e.isPdf ? "fa-file-pdf" : "fa-image"}"></i>Reçu</button>` : ""}
+        <button data-edit="${esc(e.id)}" class="btn h-8 px-3 text-xs bg-slate-100 text-slate-700"><i class="fa-solid fa-pen"></i>Modifier</button>
+        <button data-del="${esc(e.id)}" aria-label="Supprimer" class="btn h-8 w-8 text-xs bg-red-50 text-red-600 ml-auto"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div></div>`).join("") : empty;
   document.querySelectorAll("[data-sort]").forEach(th => th.querySelector(".ind").textContent = th.dataset.sort === sort.key ? (sort.dir > 0 ? " ▲" : " ▼") : "");
   const sum = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
   $("kpi-label").textContent = $("filter-month").value ? "Total du mois" : "Total des dépenses";
   $("kpi-total").textContent = fmt(sum("total")); $("kpi-tps").textContent = fmt(sum("tps")); $("kpi-tvq").textContent = fmt(sum("tvq")); $("kpi-count").textContent = data.length;
+  $("nav-count").textContent = data.length; $("nav-count").classList.toggle("hidden", !data.length);
   const del = $("del-event-btn"); del.classList.toggle("hidden", !cf.event); $("ren-event-btn").classList.toggle("hidden", !cf.event);
-  if (cf.event) del.innerHTML = `<i class="fa-solid fa-trash mr-1"></i>Supprimer l'événement « ${esc(cf.event)} »`;
+  if (cf.event) del.innerHTML = `<i class="fa-solid fa-trash"></i>Supprimer « ${esc(cf.event)} »`;
 }
-$("expenses-table-body").addEventListener("click", async ev => {
+async function onListClick(ev) {
   const ed = ev.target.closest("[data-edit]"), del = ev.target.closest("[data-del]"), vw = ev.target.closest("[data-view]");
   if (vw) return openViewer(vw.dataset.view);
   if (ed) return startEdit(ed.dataset.edit);
@@ -454,9 +589,11 @@ $("expenses-table-body").addEventListener("click", async ev => {
   const backup = expenses.slice();
   try {
     expenses = expenses.filter(x => x.id !== e.id); await saveData(); deleteReceipt(e.photoId);
-    if (editingId === e.id) resetForm(); rebuildFilters(); render();
+    if (editingId === e.id) resetForm(); rebuildFilters(); render(); toast("Dépense supprimée");
   } catch (err) { expenses = backup; await handleConflict(err); }
-});
+}
+$("expenses-table-body").addEventListener("click", onListClick);
+$("expenses-cards").addEventListener("click", onListClick);
 
 // ---------- Renommer un événement ----------
 $("ren-event-btn").addEventListener("click", async () => {
@@ -490,7 +627,7 @@ $("ren-event-btn").addEventListener("click", async () => {
   }
   btn.disabled = false;
   cf.event = typed; buildEventSelect(); rebuildFilters();
-  const sel = document.querySelector('select[data-f="event"]'); sel.value = typed; cf.event = typed;
+  setFilterUI("event", typed); cf.event = typed; toast("Événement renommé");
   render();
 });
 
@@ -509,7 +646,7 @@ $("del-event-btn").addEventListener("click", async () => {
     const id = await findFolder(folderName(name)); if (id) await graph("/items/" + id, { method: "DELETE" });
   } catch (e) { alert("L'événement est supprimé de l'application, mais son dossier OneDrive n'a pas pu être supprimé. Supprime-le à la main dans OneDrive."); }
   if (editingId && !expenses.some(x => x.id === editingId)) resetForm();
-  cf.event = ""; buildEventSelect(); rebuildFilters(); render();
+  cf.event = ""; setFilterUI("event", ""); buildEventSelect(); rebuildFilters(); render(); toast("Événement supprimé");
 });
 
 // ---------- Visionneuse de reçu ----------
@@ -585,7 +722,19 @@ $("export-btn").addEventListener("click", async () => {
   finally { btn.disabled = false; label.textContent = orig; }
 });
 
-buildTypeSelect(); calculateTaxes();
+// ---------- Onglets (cellulaire) et messages ----------
+function setTab(t) {
+  document.body.dataset.tab = t;
+  document.querySelectorAll("[data-tab-btn]").forEach(b => { const on = b.dataset.tabBtn === t; b.classList.toggle("text-blue-600", on); b.classList.toggle("text-slate-400", !on); });
+}
+document.querySelectorAll("[data-tab-btn]").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tabBtn); window.scrollTo({ top: 0 }); }));
+let toastTimer;
+function toast(m) {
+  const t = $("toast"); t.textContent = m; t.classList.remove("opacity-0", "translate-y-2");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.add("opacity-0", "translate-y-2"), 2200);
+}
+
+buildTypeSelect(); applyModes();
 init();
 </script>
 </body>
