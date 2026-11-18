@@ -134,13 +134,19 @@ thead.sticky-h th{position:sticky;top:0;z-index:1}
       <fieldset class="space-y-3">
         <legend class="sec-title mb-3"><b>2</b>Montant</legend>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <div class="col-span-2 md:col-span-1"><label class="lbl" for="tax-mode">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxe / hors QC</option></select></div>
-          <div id="currency-wrap"><label class="lbl" for="exp-currency">Devise du reçu</label><select id="exp-currency" class="inp"><option value="CAD">$ CA</option><option value="USD">$ US</option></select></div>
-          <div id="tip-wrap"><label class="lbl" for="exp-tip">Pourboire ($)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
-          <div id="usd-wrap" class="hidden col-span-2 md:col-span-1"><label class="lbl" for="exp-usd">Montant sur le reçu ($ US)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-usd" class="inp" placeholder="0.00"></div>
+          <div id="payment-wrap"><label class="lbl" for="exp-payment">Payé par</label><select id="exp-payment" class="inp"><option value="card">Carte</option><option value="cash">Argent</option></select></div>
+          <div id="currency-wrap"><label class="lbl" for="exp-currency">Devise du reçu</label><select id="exp-currency" class="inp"><option value="CAD">$ CA</option><option value="USD">$ US</option><option value="EUR">€ (euro)</option></select></div>
+          <div id="tax-wrap" class="col-span-2 md:col-span-1"><label class="lbl" for="tax-mode">Mode de taxes</label><select id="tax-mode" class="inp"><option value="included">Taxes incluses (QC)</option><option value="excluded">Sans taxe / hors QC</option></select></div>
+          <div id="usd-wrap" class="hidden col-span-2 md:col-span-1"><label id="fx-label" class="lbl" for="exp-usd">Montant sur le reçu ($ US)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-usd" class="inp" placeholder="0.00"></div>
+          <div id="rate-wrap" class="hidden col-span-2 md:col-span-1">
+            <label id="rate-label" class="lbl" for="exp-rate">Taux de change</label>
+            <div class="flex gap-2"><input type="number" inputmode="decimal" step="0.0001" min="0" id="exp-rate" class="inp tabular-nums" placeholder="0.0000"><button type="button" id="rate-refresh" title="Rechercher le taux en ligne" class="btn w-11 h-11 shrink-0 bg-slate-100 hover:bg-slate-200 text-slate-600"><i class="fa-solid fa-rotate"></i></button></div>
+            <p id="rate-status" class="text-[11px] text-slate-400 mt-1"></p>
+          </div>
           <div class="col-span-2 md:col-span-1"><label id="amount-label" class="lbl" for="exp-amount">Montant total payé ($)</label><input type="number" inputmode="decimal" step="0.01" id="exp-amount" class="inp !font-semibold" placeholder="0.00"></div>
+          <div id="tip-wrap" class="col-span-2 md:col-span-1"><label class="lbl" for="exp-tip">Pourboire ($)</label><input type="number" inputmode="decimal" step="0.01" min="0" id="exp-tip" placeholder="0.00" class="inp"></div>
         </div>
-        <div class="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 border border-slate-100 p-3">
+        <div id="tax-box" class="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 border border-slate-100 p-3">
           <div><label class="lbl !text-[10px]" for="exp-subtotal">Sous-total</label><input type="number" step="0.01" id="exp-subtotal" class="inp inp-sm !bg-white tabular-nums" readonly tabindex="-1"></div>
           <div><label class="lbl !text-[10px]" for="exp-tps">TPS (5 %)</label><input type="number" step="0.01" id="exp-tps" class="inp inp-sm !bg-white tabular-nums !text-blue-700" readonly tabindex="-1"></div>
           <div><label class="lbl !text-[10px]" for="exp-tvq">TVQ (9,975 %)</label><input type="number" step="0.01" id="exp-tvq" class="inp inp-sm !bg-white tabular-nums !text-emerald-700" readonly tabindex="-1"></div>
@@ -248,6 +254,9 @@ const r2 = n => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = v => parseFloat(v) || 0;
 const fmt = n => Number(n || 0).toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
 const fmtUsd = n => Number(n || 0).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $ US";
+const CUR_LABEL = { USD: "$ US", EUR: "€" };
+const fmtFx = (n, c) => Number(n || 0).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (CUR_LABEL[c] || c);
+const fmtRate = r => Number(r || 0).toLocaleString("fr-CA", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
 const todayStr = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const cleanName = n => n.replace(/[\\\/:*?"<>|#%~]/g, "-").replace(/\s+/g, " ").trim();
 const folderName = n => cleanName(n).replace(/[. ]+$/, "").slice(0, 80) || "Sans nom";
@@ -298,7 +307,9 @@ async function loadData() {
     etag = meta.eTag;
     const j = await (await fetch(meta["@microsoft.graph.downloadUrl"])).json();
     expenses = j.expenses || []; events = j.events || [];
-    expenses.forEach(e => { e.type = TYPE_RENAMES[e.type] || e.type; if (e.desc === undefined) e.desc = e.supplier || ""; e.tip = e.tip || 0; });
+    expenses.forEach(e => { e.type = TYPE_RENAMES[e.type] || e.type; if (e.desc === undefined) e.desc = e.supplier || ""; e.tip = e.tip || 0;
+      e.currency = e.currency || "CAD"; e.payment = e.payment || "card";
+      if (e.currency !== "CAD" && e.fxAmount == null) e.fxAmount = e.usd || 0; });
   } catch (e) { if (e.status === 404) { etag = null; expenses = []; events = []; } else throw e; }
 }
 async function saveData() {
@@ -374,23 +385,71 @@ $("tax-mode").addEventListener("change", calculateTaxes);
 let taxForced = false;
 function applyModes() {
   const km = $("exp-type").value === KM;
-  if (km) $("exp-currency").value = "CAD";
-  const usd = $("exp-currency").value === "USD";
+  if (km) { $("exp-currency").value = "CAD"; $("exp-payment").value = "card"; }
+  const cur = $("exp-currency").value, fx = cur !== "CAD", cash = $("exp-payment").value === "cash", cashFx = fx && cash;
   $("km-wrap").classList.toggle("hidden", !km);
   $("currency-wrap").classList.toggle("hidden", km);
-  $("usd-wrap").classList.toggle("hidden", !usd);
-  $("tip-wrap").classList.toggle("hidden", km);
-  if (km || usd) { $("tax-mode").value = "excluded"; $("tax-mode").disabled = true; taxForced = true; }
+  $("payment-wrap").classList.toggle("hidden", km);
+  $("usd-wrap").classList.toggle("hidden", !fx);
+  $("rate-wrap").classList.toggle("hidden", !cashFx);
+  // Devise étrangère ou kilométrage : pas de pourboire ni de taxes
+  $("tip-wrap").classList.toggle("hidden", km || fx);
+  $("tax-wrap").classList.toggle("hidden", km || fx);
+  $("tax-box").classList.toggle("hidden", km || fx);
+  if (km || fx) { $("exp-tip").value = ""; $("tax-mode").value = "excluded"; $("tax-mode").disabled = true; taxForced = true; }
   else { $("tax-mode").disabled = false; if (taxForced) { $("tax-mode").value = "included"; taxForced = false; } }
-  $("exp-amount").readOnly = km;
-  if (km) { $("exp-tip").value = ""; $("exp-amount").value = $("exp-km").value ? r2(num($("exp-km").value) * KM_RATE).toFixed(2) : ""; }
-  $("amount-label").textContent = km ? "Montant (0,73 $/km)" : usd ? "Montant facturé sur la carte de crédit ($ CA)" : "Montant total payé ($)";
+  $("fx-label").textContent = `Montant sur le reçu (${CUR_LABEL[cur] || ""})`;
+  $("rate-label").textContent = `Taux de change (1 ${CUR_LABEL[cur] || ""} = ? $ CA)`;
+  $("exp-amount").readOnly = km || cashFx;
+  if (km) $("exp-amount").value = $("exp-km").value ? r2(num($("exp-km").value) * KM_RATE).toFixed(2) : "";
+  if (cashFx) {
+    if (!$("exp-rate").value && !rateLoading && rateTried !== $("exp-currency").value + $("exp-date").value) fetchRate();
+    const a = num($("exp-usd").value), r = num($("exp-rate").value);
+    $("exp-amount").value = a && r ? r2(a * r).toFixed(2) : "";
+  }
+  $("amount-label").textContent = km ? "Montant (0,73 $/km)" : cashFx ? "Montant en $ CA (calculé)" : fx ? "Montant facturé sur la carte de crédit ($ CA)" : "Montant total payé ($)";
   if (!editingId) $("photo-hint").textContent = km ? "(facultatif pour le kilométrage)" : "";
   calculateTaxes();
 }
 $("exp-type").addEventListener("change", applyModes);
-$("exp-currency").addEventListener("change", applyModes);
+$("exp-currency").addEventListener("change", () => { $("exp-rate").value = ""; rateInfo = null; $("rate-status").textContent = ""; applyModes(); });
+$("exp-payment").addEventListener("change", applyModes);
 $("exp-km").addEventListener("input", applyModes);
+$("exp-usd").addEventListener("input", applyModes);
+$("exp-rate").addEventListener("input", () => { rateInfo = { source: "manuel", date: $("exp-date").value }; $("rate-status").textContent = "Taux saisi manuellement."; applyModes(); });
+$("rate-refresh").addEventListener("click", () => fetchRate());
+$("exp-date").addEventListener("change", () => { if ($("exp-currency").value !== "CAD" && $("exp-payment").value === "cash") fetchRate(); });
+
+// ---------- Taux de change de la Banque du Canada (taux quotidien) ----------
+let rateInfo = null, rateLoading = false, rateReq = 0, rateTried = "";
+const rateCache = {};
+async function fetchRate() {
+  const cur = $("exp-currency").value, date = $("exp-date").value;
+  if (cur === "CAD" || !date) return;
+  const req = ++rateReq, st = $("rate-status"); rateTried = cur + date;
+  rateLoading = true; st.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1"></i>Recherche du taux du ${esc(fmtDate(date))}…`;
+  try {
+    const key = cur + date;
+    if (!rateCache[key]) {
+      // On remonte 10 jours en arrière : pas de taux publié les fins de semaine et jours fériés
+      const d = new Date(date + "T12:00:00"); d.setDate(d.getDate() - 10);
+      const start = d.toISOString().slice(0, 10), series = `FX${cur}CAD`;
+      const r = await fetch(`https://www.bankofcanada.ca/valet/observations/${series}/json?start_date=${start}&end_date=${date}`);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const obs = ((await r.json()).observations || []).filter(o => o[series]?.v);
+      if (!obs.length) throw new Error("aucun taux");
+      const last = obs[obs.length - 1];
+      rateCache[key] = { rate: parseFloat(last[series].v), date: last.d, source: "Banque du Canada" };
+    }
+    if (req !== rateReq) return; // une autre recherche a été lancée entre-temps
+    rateInfo = rateCache[key];
+    $("exp-rate").value = rateInfo.rate.toFixed(4);
+    st.textContent = `Banque du Canada, taux du ${fmtDate(rateInfo.date)}` + (rateInfo.date !== date ? " (dernier taux publié avant cette date)" : "") + ".";
+  } catch (e) {
+    if (req !== rateReq) return;
+    rateInfo = null; st.innerHTML = `<span class="text-amber-600">Taux introuvable en ligne. Entre-le manuellement.</span>`;
+  } finally { if (req === rateReq) { rateLoading = false; applyModes(); } }
+}
 
 // ---------- Fichier du reçu ----------
 const getFile = () => $("exp-camera").files[0] || $("exp-photo").files[0];
@@ -418,7 +477,7 @@ function compressImage(file) {
 
 // ---------- Formulaire ----------
 function resetForm(keepEvent = "") {
-  editingId = null; $("expense-form").reset(); $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
+  editingId = null; $("expense-form").reset(); rateInfo = null; rateTried = ""; $("rate-status").textContent = ""; $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
   $("receipt-preview").classList.add("hidden"); $("file-name").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
   $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
   applyModes();
@@ -428,7 +487,10 @@ function startEdit(id) {
   const e = expenses.find(x => x.id === id); if (!e) return;
   editingId = id; buildEventSelect(e.event); buildTypeSelect(e.type);
   $("exp-date").value = e.date || ""; $("exp-desc").value = e.desc || "";
-  $("exp-currency").value = e.currency === "USD" ? "USD" : "CAD"; $("exp-usd").value = e.usd ? e.usd.toFixed(2) : ""; $("exp-km").value = e.km || "";
+  $("exp-currency").value = ["USD", "EUR"].includes(e.currency) ? e.currency : "CAD"; $("exp-payment").value = e.payment === "cash" ? "cash" : "card";
+  $("exp-usd").value = e.fxAmount ? e.fxAmount.toFixed(2) : ""; $("exp-km").value = e.km || "";
+  $("exp-rate").value = e.fxRate ? e.fxRate.toFixed(4) : ""; rateInfo = e.fxRate ? { rate: e.fxRate, date: e.fxRateDate, source: e.fxRateSource } : null;
+  $("rate-status").textContent = e.fxRate ? (e.fxRateSource === "manuel" ? "Taux saisi manuellement." : `Banque du Canada, taux du ${fmtDate(e.fxRateDate)}.`) : "";
   taxForced = false; $("tax-mode").disabled = false;
   $("tax-mode").value = (e.tps || e.tvq) ? "included" : "excluded"; $("exp-amount").value = e.total; $("exp-tip").value = e.tip ? e.tip.toFixed(2) : "";
   $("exp-note").value = e.note || ""; $("exp-photo").value = ""; $("exp-camera").value = ""; $("receipt-preview").classList.add("hidden"); $("file-name").classList.add("hidden");
@@ -451,11 +513,13 @@ $("expense-form").addEventListener("submit", async ev => {
   }
   if (!$("exp-date").value) return alert("Entre la date de la dépense.");
   if (!evName) return alert("Choisis un événement ou crée-en un nouveau.");
-  const isKm = $("exp-type").value === KM, isUsd = !isKm && $("exp-currency").value === "USD";
+  const isKm = $("exp-type").value === KM, cur = isKm ? "CAD" : $("exp-currency").value, isFx = cur !== "CAD";
+  const pay = isKm ? "card" : $("exp-payment").value, isCashFx = isFx && pay === "cash";
   const total = num($("exp-amount").value), dateV = $("exp-date").value;
   if (isKm && !(num($("exp-km").value) > 0)) return alert("Entre la distance parcourue en km.");
-  if (isUsd && !(num($("exp-usd").value) > 0)) return alert("Entre le montant en $ US inscrit sur le reçu.");
-  if (!(total > 0)) return alert(isUsd ? "Entre le montant facturé sur la carte de crédit en $ CA." : "Entre le montant de la dépense.");
+  if (isFx && !(num($("exp-usd").value) > 0)) return alert(`Entre le montant en ${CUR_LABEL[cur]} inscrit sur le reçu.`);
+  if (isCashFx && !(num($("exp-rate").value) > 0)) return alert("Entre le taux de change de la journée.");
+  if (!(total > 0)) return alert(isFx && !isCashFx ? "Entre le montant facturé sur la carte de crédit en $ CA." : "Entre le montant de la dépense.");
   if (!file && !existing && !isKm) return alert("Ajoute une photo ou un PDF du reçu.");
   if (num($("exp-tip").value) > num($("exp-amount").value)) return alert("Le pourboire ne peut pas dépasser le montant total.");
   if (file && file.type === "application/pdf" && file.size > 4 * 1024 * 1024) return alert("Ce PDF dépasse 4 Mo. Réduis-le ou prends-le en photo.");
@@ -470,7 +534,8 @@ $("expense-form").addEventListener("submit", async ev => {
     id: existing?.id || crypto.randomUUID(), date: $("exp-date").value, event: evName, type: $("exp-type").value, desc: $("exp-desc").value.trim(),
     subtotal: num($("exp-subtotal").value), tps: num($("exp-tps").value), tvq: num($("exp-tvq").value), otherTax: 0,
     tip: isKm ? 0 : num($("exp-tip").value), total, note: $("exp-note").value.trim(),
-    currency: isUsd ? "USD" : "CAD", usd: isUsd ? num($("exp-usd").value) : 0, km: isKm ? num($("exp-km").value) : 0, kmRate: isKm ? KM_RATE : 0,
+    currency: cur, payment: pay, fxAmount: isFx ? num($("exp-usd").value) : 0, usd: cur === "USD" ? num($("exp-usd").value) : 0,
+    fxRate: isCashFx ? num($("exp-rate").value) : 0, fxRateDate: isCashFx ? (rateInfo?.date || dateV) : "", fxRateSource: isCashFx ? (rateInfo?.source || "manuel") : "", km: isKm ? num($("exp-km").value) : 0, kmRate: isKm ? KM_RATE : 0,
     photoId: existing?.photoId, photoUrl: existing?.photoUrl, photoName: existing?.photoName, isPdf: existing?.isPdf
   };
   const backup = expenses.slice(), backupEvents = events.slice(); let uploaded = null;
@@ -535,6 +600,7 @@ const TYPE_COLORS = { "Restaurant": "bg-orange-50 text-orange-600", "Hôtel": "b
 const typeIcon = t => `<i class="fa-solid ${TYPE_ICONS[t] || "fa-receipt"}"></i>`;
 const typeColor = t => TYPE_COLORS[t] || "bg-slate-100 text-slate-500";
 const fmtDate = d => { if (!d) return ""; const [y, m, j] = d.split("-").map(Number); return new Date(y, m - 1, j).toLocaleDateString("fr-CA", { day: "numeric", month: "short", year: "numeric" }); };
+const fxLine = e => e.currency && e.currency !== "CAD" ? fmtFx(e.fxAmount, e.currency) + (e.fxRate ? ` × ${fmtRate(e.fxRate)}` : "") : "";
 const kmLine = e => e.km ? `${esc(String(e.km).replace(".", ","))} km × ${fmt(e.kmRate || KM_RATE)}` : "";
 function render() {
   const data = getFiltered(), tb = $("expenses-table-body"), cards = $("expenses-cards");
@@ -545,7 +611,7 @@ function render() {
     <td class="px-3 py-3 text-slate-700 max-w-[16rem]">${esc(e.desc || "")}${e.km ? `<div class="text-xs text-teal-700 mt-0.5">${kmLine(e)}</div>` : ""}${e.note ? `<div class="text-xs text-slate-400 mt-0.5 italic">${esc(e.note)}</div>` : ""}</td>
     <td class="px-3 py-3"><span class="chip ${typeColor(e.type)}">${typeIcon(e.type)}${esc(e.type || "-")}</span></td>
     <td class="px-3 py-3 whitespace-nowrap text-right text-slate-500 tabular-nums">${e.tip ? fmt(e.tip) : ""}</td>
-    <td class="px-3 py-3 whitespace-nowrap text-right font-bold text-slate-900 tabular-nums">${fmt(e.total)}${e.currency === "USD" ? `<div class="text-xs font-normal text-slate-400">${fmtUsd(e.usd)}</div>` : ""}</td>
+    <td class="px-3 py-3 whitespace-nowrap text-right font-bold text-slate-900 tabular-nums">${fmt(e.total)}${fxLine(e) ? `<div class="text-xs font-normal text-slate-400">${fxLine(e)}</div>` : ""}${e.payment === "cash" ? `<div class="text-[11px] font-semibold text-amber-600">Comptant</div>` : ""}</td>
     <td class="px-3 py-3 whitespace-nowrap text-right text-slate-600 tabular-nums">${fmt(e.tps)}</td>
     <td class="px-3 py-3 whitespace-nowrap text-right text-slate-600 tabular-nums">${fmt(e.tvq)}</td>
     <td class="px-3 py-3 text-center">${e.photoId ? `<button data-view="${esc(e.id)}" title="Voir le reçu" class="btn w-8 h-8 bg-blue-50 text-blue-600 hover:bg-blue-100"><i class="fa-solid ${e.isPdf ? "fa-file-pdf" : "fa-image"}"></i></button>` : `<span class="text-slate-300">-</span>`}</td>
@@ -560,9 +626,10 @@ function render() {
       </div>
       <div class="flex justify-between gap-2 text-xs text-slate-500 mt-0.5">
         <div class="truncate">${esc(fmtDate(e.date))} · ${esc(e.event || "-")}</div>
-        ${e.currency === "USD" ? `<div class="whitespace-nowrap">${fmtUsd(e.usd)}</div>` : (e.tps || e.tvq) ? `<div class="whitespace-nowrap tabular-nums">TPS ${fmt(e.tps)} · TVQ ${fmt(e.tvq)}</div>` : ""}
+        ${e.currency !== "CAD" ? `<div class="whitespace-nowrap">${fmtFx(e.fxAmount, e.currency)}</div>` : (e.tps || e.tvq) ? `<div class="whitespace-nowrap tabular-nums">TPS ${fmt(e.tps)} · TVQ ${fmt(e.tvq)}</div>` : ""}
       </div>
       ${e.km ? `<div class="text-xs text-teal-700 mt-1">${kmLine(e)}</div>` : ""}
+      ${e.payment === "cash" ? `<div class="text-xs text-amber-600 mt-1">Payé comptant${e.fxRate ? ` · taux ${fmtRate(e.fxRate)}` : ""}</div>` : ""}
       ${e.tip ? `<div class="text-xs text-slate-400 mt-1">Pourboire ${fmt(e.tip)}</div>` : ""}
       ${e.note ? `<div class="text-xs text-slate-500 italic mt-1 line-clamp-2">${esc(e.note)}</div>` : ""}
       <div class="flex gap-2 mt-2.5">
@@ -681,21 +748,23 @@ $("export-btn").addEventListener("click", async () => {
     ws.columns = [
       { header: "Date", key: "date", width: 12 }, { header: "Événement", key: "event", width: 26 }, { header: "Type de dépense", key: "type", width: 18 },
       { header: "Description", key: "desc", width: 24 }, { header: "Explication", key: "note", width: 36 },
-      { header: "Km", key: "km", width: 9 }, { header: "Montant US ($ US)", key: "usd", width: 16 },
+      { header: "Km", key: "km", width: 9 }, { header: "Paiement", key: "payment", width: 13 }, { header: "Devise", key: "currency", width: 8 },
+      { header: "Montant en devise", key: "fxAmount", width: 16 }, { header: "Taux de change", key: "fxRate", width: 14 },
       { header: "Sous-total ($)", key: "subtotal", width: 14 }, { header: "TPS ($)", key: "tps", width: 12 }, { header: "TVQ ($)", key: "tvq", width: 12 },
       { header: "Pourboire ($)", key: "tip", width: 13 }, { header: "Total ($)", key: "total", width: 14 },
       { header: "Reçu", key: "receipt", width: 28 }
     ];
     const head = ws.getRow(1); head.font = { bold: true }; head.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
-    ws.views = [{ state: "frozen", ySplit: 1 }]; ws.autoFilter = "A1:M1";
+    ws.views = [{ state: "frozen", ySplit: 1 }]; ws.autoFilter = "A1:P1";
     const moneyKeys = ["subtotal", "tps", "tvq", "tip", "total"];
     let failed = 0;
     for (let i = 0; i < data.length; i++) {
       const e = data[i]; label.textContent = `Préparation… ${i + 1}/${data.length}`;
-      const row = ws.addRow({ date: e.date, event: e.event || "", type: e.type || "", desc: e.desc || "", note: e.note || "", km: e.km || null, usd: e.currency === "USD" ? e.usd : null,
+      const row = ws.addRow({ date: e.date, event: e.event || "", type: e.type || "", desc: e.desc || "", note: e.note || "", km: e.km || null, payment: e.payment === "cash" ? "Comptant" : "Carte", currency: e.currency || "CAD",
+        fxAmount: e.currency && e.currency !== "CAD" ? e.fxAmount : null, fxRate: e.fxRate || null,
         subtotal: e.subtotal || 0, tps: e.tps || 0, tvq: e.tvq || 0, tip: e.tip || 0, total: e.total || 0 });
       moneyKeys.forEach(k => row.getCell(k).numFmt = money);
-      row.getCell("km").numFmt = "0.0"; row.getCell("usd").numFmt = '#,##0.00 "$ US"';
+      row.getCell("km").numFmt = "0.0"; row.getCell("fxAmount").numFmt = "#,##0.00"; row.getCell("fxRate").numFmt = "0.0000";
       row.alignment = { vertical: "middle", wrapText: true };
       if (!e.photoId) continue;
       if (e.isPdf) { row.getCell("receipt").value = { text: "PDF (ouvrir)", hyperlink: e.photoUrl }; continue; }
@@ -704,12 +773,12 @@ $("export-btn").addEventListener("click", async () => {
         const bmp = await createImageBitmap(new Blob([buf])), s = Math.min(190 / bmp.width, 250 / bmp.height, 1);
         const w = bmp.width * s, h = bmp.height * s; bmp.close?.();
         const imgId = wb.addImage({ buffer: buf, extension: /png/.test(type) ? "png" : "jpeg" });
-        ws.addImage(imgId, { tl: { col: 12.05, row: row.number - 1 + 0.03 }, ext: { width: w, height: h } });
+        ws.addImage(imgId, { tl: { col: 15.05, row: row.number - 1 + 0.03 }, ext: { width: w, height: h } });
         row.height = h * 0.75 + 6;
       } catch (err) { failed++; row.getCell("receipt").value = "Reçu indisponible"; }
     }
     const n = data.length + 1, tot = k => r2(data.reduce((s, e) => s + (e[k] || 0), 0));
-    const col = { subtotal: "H", tps: "I", tvq: "J", tip: "K", total: "L" };
+    const col = { subtotal: "K", tps: "L", tvq: "M", tip: "N", total: "O" };
     const totalRow = ws.addRow({ date: "TOTAL" }); totalRow.font = { bold: true };
     moneyKeys.forEach(k => { const c = totalRow.getCell(k); c.value = { formula: `SUM(${col[k]}2:${col[k]}${n})`, result: tot(k) }; c.numFmt = money; });
     const buf = await wb.xlsx.writeBuffer();
