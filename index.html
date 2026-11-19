@@ -167,7 +167,11 @@ body[data-mode="work"] #kpi-total-card{background-image:linear-gradient(to botto
         <legend class="sec-title mb-3"><b>1</b>Dépense</legend>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
           <div class="col-span-1"><label class="lbl" for="exp-date">Date</label><input type="date" id="exp-date" required class="inp"></div>
-          <div class="work-only col-span-2 md:col-span-1"><label class="lbl" for="exp-project">Numéro de projet</label><input id="exp-project" list="project-list" placeholder="ex: 25132" autocomplete="off" class="inp"><datalist id="project-list"></datalist></div>
+          <div class="work-only col-span-2 md:col-span-1">
+            <label class="lbl" for="exp-project">Numéro de projet</label>
+            <select id="exp-project" class="inp"></select>
+            <input id="exp-project-new" placeholder="Nouveau numéro de projet (ex: 25132)" autocomplete="off" class="inp hidden mt-2">
+          </div>
           <div class="col-span-1 md:col-span-1"><label class="lbl" for="exp-type">Type</label><select id="exp-type" class="inp"></select></div>
           <div class="col-span-2 md:col-span-1">
             <label class="lbl" for="exp-event"><span class="g-label">Événement</span> (nom du dossier)</label>
@@ -334,7 +338,7 @@ const MODES = {
     kmRate: 0.72, tipTypes: ["Taxi", "Repas"], fileParts: ["date", "desc"], paidFeature: true,
     g: { label: "Numéro de rapport", un: "un numéro de rapport", le: "le numéro de rapport", Le: "Le numéro de rapport", sel: "Choisir un numéro de rapport…", nouveau: "➕ Nouveau numéro de rapport…", ph: "Nouveau numéro de rapport", done: "Numéro de rapport", nom: "le nouveau numéro de rapport" } }
 };
-let mode = "personal", paid = {}; // paid : { "numéro de rapport": "date où il a été marqué payé" }
+let mode = "personal", projects = [], paid = {}; // paid : { "numéro de rapport": "date où il a été marqué payé" }
 const CFG = () => MODES[mode];
 const encPath = p => p.split("/").map(encodeURIComponent).join("/");
 const relPath = name => (CFG().root ? CFG().root + "/" : "") + name; // chemin dans le dossier de l'app
@@ -379,7 +383,7 @@ async function chooseMode(m) {
   paid = {}; $("show-paid").checked = false;
   history.replaceState(null, "", "#" + c.hash); // le lien peut être mis en favori
   // Remise à zéro complète : aucune donnée d'un rapport ne passe dans l'autre
-  expenses = []; events = []; etag = null; cf = {};
+  expenses = []; events = []; projects = []; etag = null; cf = {};
   document.querySelectorAll("[data-f]").forEach(el => el.value = "");
   $("filter-period").value = "ytd"; $("filter-month").value = todayStr().slice(0, 7); $("month-wrap").classList.add("hidden");
   resetForm();
@@ -408,16 +412,16 @@ async function loadData() {
     const meta = await (await graph("/special/approot:/" + encPath(CFG().file))).json();
     etag = meta.eTag;
     const j = await (await fetch(meta["@microsoft.graph.downloadUrl"])).json();
-    expenses = j.expenses || []; events = j.events || []; paid = j.paid || {};
+    expenses = j.expenses || []; events = j.events || []; paid = j.paid || {}; projects = j.projects || [];
     expenses.forEach(e => { e.type = TYPE_RENAMES[e.type] || e.type; if (e.desc === undefined) e.desc = e.supplier || ""; e.tip = e.tip || 0;
       e.currency = e.currency || "CAD"; e.payment = e.payment || "card";
       if (e.currency !== "CAD" && e.fxAmount == null) e.fxAmount = e.usd || 0; });
-  } catch (e) { if (e.status === 404) { etag = null; expenses = []; events = []; paid = {}; } else throw e; }
+  } catch (e) { if (e.status === 404) { etag = null; expenses = []; events = []; paid = {}; projects = []; } else throw e; }
 }
 async function saveData() {
   const h = { "Content-Type": "application/json" };
   if (etag) h["If-Match"] = etag; // refuse d'écraser une version plus récente
-  const r = await graph("/special/approot:/" + encPath(CFG().file) + ":/content", { method: "PUT", headers: h, body: JSON.stringify({ version: 3, events, expenses, paid }) });
+  const r = await graph("/special/approot:/" + encPath(CFG().file) + ":/content", { method: "PUT", headers: h, body: JSON.stringify({ version: 3, events, expenses, paid, projects }) });
   etag = (await r.json()).eTag;
 }
 // Le dossier de l'événement est créé automatiquement lors du premier envoi
@@ -459,7 +463,7 @@ async function fetchReceipt(id) {
 async function refresh() {
   const msg = (t, c) => { const h = `<div class="py-12 text-center text-sm ${c}">${t}</div>`; $("expenses-table-body").innerHTML = `<tr><td colspan="11">${h}</td></tr>`; $("expenses-cards").innerHTML = h; };
   msg(`<i class="fa-solid fa-spinner fa-spin mr-2"></i>Chargement…`, "text-slate-400");
-  try { await loadData(); buildEventSelect(); rebuildFilters(); render(); }
+  try { await loadData(); buildEventSelect(); buildProjectSelect(); rebuildFilters(); render(); }
   catch (e) { msg("Impossible de charger les dépenses : " + esc(e.message), "text-red-500"); }
 }
 
@@ -474,6 +478,17 @@ function buildEventSelect(selected = "") {
   $("exp-event-new").value = ""; toggleNew();
 }
 $("exp-event").addEventListener("change", toggleNew);
+
+// ---------- Numéros de projet (rapport de travail) ----------
+const allProjects = () => [...new Set([...projects, ...expenses.map(e => e.project).filter(Boolean)])].sort((a, b) => a.localeCompare(b, "fr", { numeric: true }));
+function toggleNewProject() { const n = $("exp-project").value === "__new__"; $("exp-project-new").classList.toggle("hidden", !n); if (n) $("exp-project-new").focus(); }
+function buildProjectSelect(selected = "") {
+  const list = allProjects();
+  $("exp-project").innerHTML = `<option value="">Choisir un numéro de projet…</option>` + list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("") + `<option value="__new__">➕ Nouveau numéro de projet…</option>`;
+  $("exp-project").value = list.includes(selected) ? selected : "";
+  $("exp-project-new").value = ""; toggleNewProject();
+}
+$("exp-project").addEventListener("change", toggleNewProject);
 function buildTypeSelect(sel = "") {
   const T = CFG().types;
   $("exp-type").innerHTML = T.map(t => `<option>${esc(t)}</option>`).join("");
@@ -593,7 +608,7 @@ function compressImage(file) {
 
 // ---------- Formulaire ----------
 function resetForm(keepEvent = "", keepProject = "") {
-  editingId = null; $("expense-form").reset(); $("exp-project").value = keepProject; rateInfo = null; rateTried = ""; $("rate-status").textContent = ""; $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
+  editingId = null; $("expense-form").reset(); buildProjectSelect(keepProject); rateInfo = null; rateTried = ""; $("rate-status").textContent = ""; $("exp-date").value = todayStr(); buildEventSelect(keepEvent); buildTypeSelect();
   $("receipt-preview").classList.add("hidden"); $("file-name").classList.add("hidden"); $("form-title").textContent = "Ajouter une dépense";
   $("submit-btn").textContent = "Enregistrer la dépense"; $("cancel-btn").classList.add("hidden"); $("photo-hint").textContent = "";
   applyModes();
@@ -602,7 +617,7 @@ $("cancel-btn").addEventListener("click", () => resetForm());
 function startEdit(id) {
   const e = expenses.find(x => x.id === id); if (!e) return;
   editingId = id; buildEventSelect(e.event); buildTypeSelect(e.type);
-  $("exp-date").value = e.date || ""; $("exp-desc").value = e.desc || ""; $("exp-project").value = e.project || "";
+  $("exp-date").value = e.date || ""; $("exp-desc").value = e.desc || ""; buildProjectSelect(e.project || "");
   $("exp-currency").value = ["USD", "EUR"].includes(e.currency) ? e.currency : "CAD"; $("exp-payment").value = e.payment === "cash" ? "cash" : "card";
   $("exp-usd").value = e.fxAmount ? e.fxAmount.toFixed(2) : ""; $("exp-km").value = e.km || "";
   $("exp-rate").value = e.fxRate ? e.fxRate.toFixed(4) : ""; rateInfo = e.fxRate ? { rate: e.fxRate, date: e.fxRateDate, source: e.fxRateSource } : null;
@@ -630,7 +645,12 @@ $("expense-form").addEventListener("submit", async ev => {
   if (!$("exp-date").value) return alert("Entre la date de la dépense.");
   if (!evName) return alert(`Choisis ${CFG().g.un} ou crée-en un nouveau.`);
   if (paid[evName] && (!editingId || expenses.find(x => x.id === editingId)?.event !== evName)) return alert(`${CFG().g.Le} « ${evName} » est marqué payé. Choisis-en un autre.`);
-  const project = mode === "work" ? $("exp-project").value.trim() : "";
+  let project = mode === "work" ? $("exp-project").value : "";
+  if (project === "__new__") {
+    const typed = $("exp-project-new").value.trim();
+    if (!typed) return alert("Entre le nouveau numéro de projet.");
+    project = allProjects().find(n => n.toLowerCase() === typed.toLowerCase()) || typed; // évite les doublons
+  }
   if (mode === "work" && !project) return alert("Entre le numéro de projet.");
   const isKm = $("exp-type").value === KM, cur = isKm ? "CAD" : $("exp-currency").value, isFx = cur !== "CAD";
   const pay = isKm ? "card" : $("exp-payment").value, isCashFx = isFx && pay === "cash";
@@ -657,7 +677,7 @@ $("expense-form").addEventListener("submit", async ev => {
     fxRate: isCashFx ? num($("exp-rate").value) : 0, fxRateDate: isCashFx ? (rateInfo?.date || dateV) : "", fxRateSource: isCashFx ? (rateInfo?.source || "manuel") : "", km: isKm ? num($("exp-km").value) : 0, kmRate: isKm ? CFG().kmRate : 0,
     photoId: existing?.photoId, photoUrl: existing?.photoUrl, photoName: existing?.photoName, isPdf: existing?.isPdf
   };
-  const backup = expenses.slice(), backupEvents = events.slice(); let uploaded = null;
+  const backup = expenses.slice(), backupEvents = events.slice(), backupProjects = projects.slice(); let uploaded = null;
   try {
     if (file) {
       const pdf = file.type === "application/pdf", body = pdf ? file : await compressImage(file);
@@ -672,13 +692,14 @@ $("expense-form").addEventListener("submit", async ev => {
       }
     }
     if (!events.includes(evName)) events.push(evName);
+    if (project && !projects.includes(project)) projects.push(project);
     expenses = existing ? expenses.map(x => x.id === rec.id ? rec : x) : [rec, ...expenses];
     await saveData();
     if (file && existing) deleteReceipt(existing.photoId);
     const wasEdit = !!existing; resetForm(evName, project); rebuildFilters(); render();
     toast(wasEdit ? "Modification enregistrée" : "Dépense enregistrée");
   } catch (e) {
-    expenses = backup; events = backupEvents; if (uploaded) deleteReceipt(uploaded.photoId);
+    expenses = backup; events = backupEvents; projects = backupProjects; if (uploaded) deleteReceipt(uploaded.photoId);
     await handleConflict(e);
   } finally { btn.disabled = false; btn.textContent = editingId ? "Enregistrer les modifications" : "Enregistrer la dépense"; }
 });
@@ -691,8 +712,6 @@ function fillSelect(sel, vals, all, suffix = () => "") {
 }
 function rebuildFilters() {
   const types = [...new Set(expenses.map(e => e.type).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
-  const projects = [...new Set(expenses.map(e => e.project).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr", { numeric: true }));
-  $("project-list").innerHTML = projects.map(v => `<option value="${esc(v)}">`).join("");
   const evs = allEvents().filter(n => !paid[n] || $("show-paid").checked);
   document.querySelectorAll('select[data-f="event"]').forEach(sel => fillSelect(sel, evs, "Tous", n => paid[n] ? " (payé)" : ""));
   document.querySelectorAll('select[data-f="type"]').forEach(sel => fillSelect(sel, types, "Tous"));
